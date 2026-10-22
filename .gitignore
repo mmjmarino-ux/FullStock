@@ -1,0 +1,36 @@
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+
+# Dependencies and generated build output
+**/node_modules/
+**/vendor/
+frontend/dist/
+backend/public/build/
+backend/public/hot
+
+# Laravel runtime and local database
+backend/storage/logs/*.log
+backend/storage/framework/cache/data/*
+backend/storage/framework/sessions/*
+backend/storage/framework/views/*
+backend/database/*.sqlite
+backend/bootstrap/cache/*.php
+
+# Local caches and generated artifacts
+**/.phpunit.result.cache
+**/.phpunit.cache/
+.codex-build/
+.pptx_build/
+_proposal_render/
+_proposal_render_final/
+output/
+presentation_output/
+tmp/
