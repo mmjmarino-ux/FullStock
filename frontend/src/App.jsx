@@ -94,20 +94,27 @@ function SmartLogo({ light = false, size = 'normal', animated = false }) {
   </div>
 }
 
-function LoginScreen({ onLogin, onForgotPassword, onResetPassword }) {
+function LoginScreen({ onLogin, onForgotPassword, onResetPassword, onSetupAdministrator }) {
   const [mode, setMode] = useState(() => {
     const params = new URLSearchParams(window.location.search)
     return params.get('token') && params.get('email') ? 'reset' : 'login'
   })
   const [resetToken, setResetToken] = useState(() => new URLSearchParams(window.location.search).get('token') || '')
   const [email, setEmail] = useState(() => new URLSearchParams(window.location.search).get('email') || '')
+  const [name, setName] = useState('')
+  const [setupKey, setSetupKey] = useState('')
+  const [setupAvailable, setSetupAvailable] = useState(false)
   const [password, setPassword] = useState('')
   const [passwordConfirmation, setPasswordConfirmation] = useState('')
   const [busy, setBusy] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [formMessage, setFormMessage] = useState(null)
+  useEffect(() => {
+    api.setupStatus().then((result) => setSetupAvailable(Boolean(result.setup_available))).catch(() => {})
+  }, [])
   const resettingPassword = mode === 'reset'
-  const showPasswordField = mode === 'login' || resettingPassword
+  const settingUpAdministrator = mode === 'setup'
+  const showPasswordField = mode === 'login' || resettingPassword || settingUpAdministrator
   const switchMode = (nextMode) => {
     setMode(nextMode)
     setFormMessage(null)
@@ -138,6 +145,9 @@ function LoginScreen({ onLogin, onForgotPassword, onResetPassword }) {
         switchMode('login')
         setPassword('')
         setFormMessage({ type: 'success', text: 'Your password has been reset. Sign in with your new password.' })
+      } else if (settingUpAdministrator) {
+        await onSetupAdministrator({ setup_key: setupKey, name, email, password, password_confirmation: passwordConfirmation })
+        await onLogin(email, password)
       } else {
         await onLogin(email, password)
       }
@@ -150,7 +160,9 @@ function LoginScreen({ onLogin, onForgotPassword, onResetPassword }) {
       ? ['Forgot your password?', 'Enter your email and we’ll send a secure reset link.']
       : mode === 'reset'
         ? ['Reset your password', 'Choose a new password for your account.']
-        : ['Welcome back', 'Log in to your account to continue.']
+        : settingUpAdministrator
+          ? ['Set up your administrator account', 'Create the first administrator for this live workspace. Setup closes after this account is created.']
+          : ['Welcome back', 'Log in to your account to continue.']
 
   return <div className="login-screen">
     <section className="login-brand-panel">
@@ -170,14 +182,17 @@ function LoginScreen({ onLogin, onForgotPassword, onResetPassword }) {
         <div className="login-heading"><span className="eyebrow">WELCOME TO FULLSTOCK</span><h2>{heading[0]}</h2><p>{heading[1]}</p></div>
         <form onSubmit={submit} className="login-form">
           {mode !== 'reset' && <label className="field-label">Email address<div className="input-shell"><Mail size={17} /><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required autoComplete="email" placeholder="name@example.com" /></div></label>}
+          {settingUpAdministrator && <label className="field-label">Full name<div className="input-shell"><input type="text" value={name} onChange={(event) => setName(event.target.value)} required autoComplete="name" placeholder="Your name" /></div></label>}
+          {settingUpAdministrator && <label className="field-label">One-time setup key<div className="input-shell"><input type="password" value={setupKey} onChange={(event) => setSetupKey(event.target.value)} required autoComplete="off" placeholder="Paste the Render setup key" /></div></label>}
           {resettingPassword && <label className="field-label">Email address<div className="input-shell"><Mail size={17} /><input type="email" value={email} readOnly autoComplete="email" /></div></label>}
-          {showPasswordField && <label className="field-label">{resettingPassword ? 'New password' : 'Password'}<div className="input-shell"><input type={showPassword ? 'text' : 'password'} value={password} onChange={(event) => setPassword(event.target.value)} required minLength={resettingPassword ? 8 : undefined} autoComplete={resettingPassword ? 'new-password' : 'current-password'} placeholder={resettingPassword ? 'Enter a new password' : 'Enter your password'} /><button type="button" className="password-toggle" aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} onClick={() => setShowPassword((visible) => !visible)}>{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button></div></label>}
-          {resettingPassword && <label className="field-label">Confirm password<div className="input-shell"><input type={showPassword ? 'text' : 'password'} value={passwordConfirmation} onChange={(event) => setPasswordConfirmation(event.target.value)} required minLength={8} autoComplete="new-password" placeholder="Enter the password again" /></div></label>}
+          {showPasswordField && <label className="field-label">{resettingPassword ? 'New password' : settingUpAdministrator ? 'Create a password' : 'Password'}<div className="input-shell"><input type={showPassword ? 'text' : 'password'} value={password} onChange={(event) => setPassword(event.target.value)} required minLength={settingUpAdministrator ? 12 : resettingPassword ? 8 : undefined} autoComplete={resettingPassword || settingUpAdministrator ? 'new-password' : 'current-password'} placeholder={resettingPassword ? 'Enter a new password' : settingUpAdministrator ? 'Use at least 12 characters' : 'Enter your password'} /><button type="button" className="password-toggle" aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} onClick={() => setShowPassword((visible) => !visible)}>{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button></div></label>}
+          {(resettingPassword || settingUpAdministrator) && <label className="field-label">Confirm password<div className="input-shell"><input type={showPassword ? 'text' : 'password'} value={passwordConfirmation} onChange={(event) => setPasswordConfirmation(event.target.value)} required minLength={settingUpAdministrator ? 12 : 8} autoComplete="new-password" placeholder="Enter the password again" /></div></label>}
           {mode === 'login' && <div className="login-options"><label><input type="checkbox" defaultChecked /> Remember me</label><button type="button" className="link-button" onClick={() => switchMode('forgot')}>Forgot password?</button></div>}
           {formMessage && <p className={'auth-feedback auth-feedback-' + formMessage.type} role={formMessage.type === 'error' ? 'alert' : 'status'}>{formMessage.text}</p>}
-          <button className="button button-primary button-wide" disabled={busy}>{busy ? 'Please wait…' : mode === 'forgot' ? 'Send reset link' : resettingPassword ? 'Save new password' : 'Log in'}<ArrowUpRight size={16} /></button>
+          <button className="button button-primary button-wide" disabled={busy}>{busy ? 'Please wait…' : mode === 'forgot' ? 'Send reset link' : resettingPassword ? 'Save new password' : settingUpAdministrator ? 'Create administrator' : 'Log in'}<ArrowUpRight size={16} /></button>
         </form>
         {mode !== 'login' && <div className="login-switch">Remembered your password? <button type="button" className="link-button" onClick={() => switchMode('login')}>Back to log in</button></div>}
+        {mode === 'login' && setupAvailable && <div className="login-switch">First time here? <button type="button" className="link-button" onClick={() => switchMode('setup')}>Set up administrator</button></div>}
       </div>
       <div className="login-footnote">© 2026 FullStock · Inventory and sales management</div>
     </section>
@@ -1252,7 +1267,7 @@ function App() {
     notify('Sale completed and inventory updated.')
   }
 
-  if (!session) return <LoginScreen onLogin={login} onForgotPassword={api.forgotPassword} onResetPassword={api.resetPassword} />
+  if (!session) return <LoginScreen onLogin={login} onSetupAdministrator={api.setupAdministrator} onForgotPassword={api.forgotPassword} onResetPassword={api.resetPassword} />
 
   const role = session.user?.role?.toLowerCase()
   const isStaff = role === 'staff'

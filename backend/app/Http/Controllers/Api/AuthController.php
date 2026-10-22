@@ -7,12 +7,54 @@ use App\Models\User;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
 use Throwable;
 
 class AuthController extends Controller
 {
+    public function setupStatus()
+    {
+        return response()->json([
+            'setup_available' => filled(config('services.admin_setup_key')) && !User::query()->exists(),
+        ]);
+    }
+
+    public function setupAdministrator(Request $request)
+    {
+        $data = $request->validate([
+            'setup_key' => ['required', 'string', 'max:255'],
+            'name' => ['required', 'string', 'max:120'],
+            'email' => ['required', 'email', 'max:255'],
+            'password' => ['required', 'string', 'min:12', 'confirmed'],
+        ]);
+        $expectedKey = (string) config('services.admin_setup_key');
+
+        if ($expectedKey === '' || !hash_equals($expectedKey, $data['setup_key'])) {
+            return response()->json(['message' => 'Administrator setup is unavailable or the setup key is incorrect.'], 403);
+        }
+
+        return DB::transaction(function () use ($data) {
+            if (DB::connection()->getDriverName() === 'pgsql') {
+                DB::statement('LOCK TABLE users IN EXCLUSIVE MODE');
+            }
+
+            if (User::query()->exists()) {
+                return response()->json(['message' => 'An account already exists. Administrator setup is closed.'], 409);
+            }
+
+            $user = User::create([
+                'name' => $data['name'],
+                'email' => $data['email'],
+                'password' => $data['password'],
+                'role' => 'admin',
+            ]);
+
+            return $this->authenticatedResponse($user);
+        });
+    }
+
     public function createStaffAccount(Request $request)
     {
         $data = $request->validate([

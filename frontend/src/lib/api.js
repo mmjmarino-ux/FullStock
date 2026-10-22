@@ -79,6 +79,8 @@ async function assistantRequest(question, conversation = [], onToken) {
 }
 
 export const api = {
+  setupStatus: () => request('/setup/status'),
+  setupAdministrator: (data) => request('/setup/administrator', { method: 'POST', body: JSON.stringify(data) }),
   login: (email, password) => request('/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
   createStaffAccount: (data) => request('/staff-accounts', { method: 'POST', body: JSON.stringify(data) }),
   forgotPassword: (email) => request('/forgot-password', { method: 'POST', body: JSON.stringify({ email }) }),

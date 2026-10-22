@@ -2,6 +2,8 @@
 
 return [
 
+    'admin_setup_key' => env('FULLSTOCK_ADMIN_SETUP_KEY'),
+
     'frontend_url' => explode(',', env('FRONTEND_URL', 'http://localhost:5173'))[0],
 
     /*
