@@ -16,9 +16,9 @@ services:
       - key: APP_KEY
         sync: false
       - key: APP_URL
-        value: https://fullstock-api.onrender.com
+        value: https://fullstock-api-rwup.onrender.com
       - key: FRONTEND_URL
-        value: https://fullstock-frontend.onrender.com
+        value: https://fullstock-frontend-lj4n.onrender.com
       - key: DB_CONNECTION
         value: pgsql
       - key: DB_URL
@@ -38,7 +38,7 @@ services:
     staticPublishPath: dist
     envVars:
       - key: VITE_API_URL
-        value: https://fullstock-api.onrender.com/api
+        value: https://fullstock-api-rwup.onrender.com/api
     routes:
       - type: rewrite
         source: /*
