@@ -2,7 +2,7 @@ services:
   - type: web
     name: fullstock-api
     runtime: docker
-    plan: starter
+    plan: free
     region: singapore
     rootDir: backend
     dockerfilePath: ./Dockerfile
@@ -33,7 +33,6 @@ services:
   - type: web
     name: fullstock-frontend
     runtime: static
-    plan: starter
     rootDir: frontend
     buildCommand: npm ci && npm run build
     staticPublishPath: dist
@@ -47,7 +46,7 @@ services:
 
 databases:
   - name: fullstock-db
-    plan: basic-256mb
+    plan: free
     region: singapore
     databaseName: fullstock
     user: fullstock

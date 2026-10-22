@@ -70,9 +70,9 @@ If you open the frontend without starting Laravel, use the same demo credentials
 
 ## Cloud deployment
 
-The root `render.yaml` defines a complete Render deployment: the React static site, Laravel Docker API, and PostgreSQL database in Singapore. Connect this repository to Render and create a Blueprint from the repository root. The Blueprint asks for `APP_KEY`; generate it locally with `cd backend; php artisan key:generate --show` and enter the result as a secret. Do not commit it.
+The root `render.yaml` defines a free Render demo deployment: the React static site, Laravel Docker API, and PostgreSQL database in Singapore. Connect this repository to Render and create a Blueprint from the repository root. The Blueprint asks for `APP_KEY`; generate it locally with `cd backend; php artisan key:generate --show` and enter the result as a secret. Do not commit it.
 
-The Blueprint uses Render's paid Starter web service and Basic-256mb PostgreSQL plan so the API stays online and the database does not expire like Render's 30-day free database. Check the current Render prices before creating the Blueprint. The service names determine the default `onrender.com` URLs in `render.yaml`; if Render assigns different URLs, update `APP_URL`, `FRONTEND_URL`, and the frontend's `VITE_API_URL` in the Render dashboard, then redeploy. Password reset mail is set to `log` until SMTP settings are configured.
+The API and PostgreSQL database use Render's free plans. Free web services can spin down after inactivity, and free PostgreSQL databases expire after 30 days, so this setup is for demos and should not hold important business data. The service names determine the default `onrender.com` URLs in `render.yaml`; if Render assigns different URLs, update `APP_URL`, `FRONTEND_URL`, and the frontend's `VITE_API_URL` in the Render dashboard, then redeploy. Password reset mail is set to `log` until SMTP settings are configured.
 
 The Laravel container runs database migrations at startup. Back up production data before changing database or deployment settings.
 
