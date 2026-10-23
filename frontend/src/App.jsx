@@ -415,7 +415,7 @@ function StaffPosPage({ products, search, setSearch, onCheckout }) {
     if (checkoutBusy || !lines.length) return
     setCheckoutBusy(true)
     try {
-      if (await onCheckout(lines)) setCart([])
+      if (await onCheckout({ items: lines })) setCart([])
     } finally {
       setCheckoutBusy(false)
     }
