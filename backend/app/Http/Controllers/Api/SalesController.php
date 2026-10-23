@@ -88,7 +88,13 @@ class SalesController extends Controller
                 'status' => 'Completed',
                 'sold_at' => now(),
             ]);
-            $sale->update(['sale_number' => 'S-' . str_pad((string) $sale->id, 5, '0', STR_PAD_LEFT)]);
+            $baseSaleNumber = 'S-' . str_pad((string) $sale->id, 5, '0', STR_PAD_LEFT);
+            $saleNumber = $baseSaleNumber;
+            $suffix = 1;
+            while (Sale::where('sale_number', $saleNumber)->exists()) {
+                $saleNumber = $baseSaleNumber . '-' . str_pad((string) $suffix++, 2, '0', STR_PAD_LEFT);
+            }
+            $sale->update(['sale_number' => $saleNumber]);
 
             foreach ($pricedItems as $pricedItem) {
                 $product = $pricedItem['product'];
