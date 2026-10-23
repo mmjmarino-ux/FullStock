@@ -29,6 +29,8 @@ services:
           property: connectionString
       - key: LOG_LEVEL
         value: warning
+      - key: LOG_CHANNEL
+        value: stderr
       - key: MAIL_MAILER
         value: log
 
