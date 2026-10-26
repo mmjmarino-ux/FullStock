@@ -1310,12 +1310,13 @@ function App() {
     setModal(null)
   }
   const deleteEntity = async (type, item) => {
-    if (!window.confirm('Delete ' + item.name + '? This action cannot be undone.')) return
-    const listKey = type.toLowerCase()
-    await callApi(api.remove(pagePaths[type], item.id))
-    persist({ ...data, [listKey]: data[listKey].filter((value) => value.id !== item.id) })
-    notify(type.slice(0, -1) + ' deleted.')
-  }
+  if (!window.confirm('Delete ' + item.name + '? This action cannot be undone.')) return
+  const listKey = type.toLowerCase()
+  const response = await callApi(api.remove(pagePaths[type], item.id))
+  if (session?.token && !response) return
+  persist({ ...data, [listKey]: data[listKey].filter((value) => value.id !== item.id) })
+  notify(type.slice(0, -1) + ' deleted.')
+}
   const saveRestock = async (product, quantity, note) => {
     const movement = { id: getId(data.movements), date: new Date().toISOString(), product_id: product.id, product_name: product.name, type: 'Stock In', quantity, reference: note }
     const savedMovement = await callApi(api.adjustStock({ product_id: product.id, quantity, type: 'in', note }))
