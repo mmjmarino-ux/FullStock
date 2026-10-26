@@ -25,7 +25,6 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/suppliers', [SupplierController::class, 'index']);
         Route::get('/suppliers/{supplier}', [SupplierController::class, 'show']);
         Route::get('/inventory/movements', [InventoryController::class, 'movements']);
-        Route::post('/inventory/adjustments', [InventoryController::class, 'adjust']);
         Route::post('/assistant', [AssistantController::class, 'ask'])->middleware('throttle:20,1');
     });
 
@@ -33,5 +32,6 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/staff-accounts', [AuthController::class, 'createStaffAccount'])->middleware('throttle:6,1');
         Route::apiResource('products', ProductController::class)->only(['store', 'update', 'destroy']);
         Route::apiResource('suppliers', SupplierController::class)->only(['store', 'update', 'destroy']);
+        Route::post('/inventory/adjustments', [InventoryController::class, 'adjust']);
     });
 });
