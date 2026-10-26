@@ -137,7 +137,7 @@ function LoginScreen({ onLogin, onForgotPassword, onResetPassword, onSetupAdmini
         setFormMessage({
           type: localMail ? 'info' : 'success',
           text: localMail
-            ? 'Local log mail is enabled, so no email was sent. If this address belongs to an account, its reset link is in backend/storage/logs/laravel.log.'
+            ? 'No email was sent. On Render, open fullstock-api → Logs and search for the password reset message. If no reset link appears, this email is not an account in the live database.'
             : 'If an account exists for this email, a password reset link has been sent. The link expires in 60 minutes.',
         })
       } else if (resettingPassword) {
