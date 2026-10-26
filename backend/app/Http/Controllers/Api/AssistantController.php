@@ -21,8 +21,8 @@ class AssistantController extends Controller
         ]);
 
         $provider = strtolower(trim((string) config('services.ai.provider', 'ollama')));
-        if (!in_array($provider, ['ollama', 'openai'], true)) {
-            return response()->json(['message' => 'AI_PROVIDER must be set to ollama or openai in backend/.env.'], 503);
+        if (!in_array($provider, ['ollama', 'openai', 'gemini'], true)) {
+        return response()->json(['message' => 'AI_PROVIDER must be set to ollama, openai, or gemini.'], 503);
         }
 
         if ($provider === 'ollama') {
@@ -67,7 +67,7 @@ class AssistantController extends Controller
                             'top_k' => 20,
                         ],
                     ]);
-            } else {
+            } elseif ($provider === 'openai') {
                 $apiKey = trim((string) config('services.openai.key'));
                 if ($apiKey === '') {
                     return response()->json([
@@ -87,7 +87,48 @@ class AssistantController extends Controller
                         'store' => false,
                     ]);
                 $answer = $this->extractAnswer($response->json());
+            } else {
+                $apiKey = trim((string) config('services.gemini.key'));
+                if ($apiKey === '') {
+                    return response()->json([
+                        'message' => 'The AI assistant is temporarily unavailable. Please try again later.',
+                    ], 503);
+                }
+
+                $response = Http::acceptJson()
+                    ->withHeaders(['x-goog-api-key' => $apiKey])
+                    ->connectTimeout(8)
+                    ->timeout((int) config('services.gemini.timeout', 35))
+                    ->post(
+                        rtrim(config('services.gemini.endpoint'), '/')
+                            . '/models/' . config('services.gemini.model')
+                            . ':generateContent',
+                        [
+                            'systemInstruction' => [
+                                'parts' => [['text' => $instructions]],
+                            ],
+                            'contents' => [[
+                                'role' => 'user',
+                                'parts' => [[
+                                    'text' => $this->conversationInput(
+                                        $validated['conversation'] ?? [],
+                                        $validated['question']
+                                    ),
+                                ]],
+                            ]],
+                            'generationConfig' => [
+                                'maxOutputTokens' => 700,
+                                'temperature' => 0.2,
+                            ],
+                        ]
+                    );
+
+                $answer = collect($response->json('candidates.0.content.parts', []))
+                    ->pluck('text')
+                    ->filter(fn ($text) => is_string($text) && trim($text) !== '')
+                    ->implode("\n");
             }
+
         } catch (ConnectionException $exception) {
             $timedOut = preg_match('/timed out|cURL error 28/i', $exception->getMessage()) === 1;
             Log::warning('FullStock AI request could not connect to the provider.', [
@@ -121,13 +162,13 @@ class AssistantController extends Controller
                 $message = 'Ollama returned an error. Confirm the Ollama app is running and the selected model is installed.';
             } else {
                 $message = match ($response->status()) {
-                    401, 403 => 'The AI provider rejected the configured credentials. Check OPENAI_API_KEY in backend/.env.',
-                    429 => 'The AI provider is rate-limited or the API account has no available quota. Check your API account and try again.',
-                    default => 'The AI service could not answer right now. Check the backend logs and try again.',
+                    401, 403 => 'The AI assistant is temporarily unavailable. Please try again later.',
+                    429 => 'The AI usage limit has been reached. Please try again later.',
+                    default => 'The AI assistant is temporarily unavailable. Please try again later.',
                 };
             }
 
-            return response()->json(['message' => $message], 502);
+            return response()->json(['message' => $message], $response->status() === 429 ? 429 : 502);
         }
 
         if ($provider === 'ollama') {

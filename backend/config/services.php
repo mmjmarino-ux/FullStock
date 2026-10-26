@@ -57,4 +57,11 @@ return [
         'timeout' => (int) env('OPENAI_TIMEOUT', 35),
     ],
 
+        'gemini' => [
+        'key' => env('GEMINI_API_KEY'),
+        'model' => env('GEMINI_MODEL', 'gemini-3.5-flash'),
+        'endpoint' => 'https://generativelanguage.googleapis.com/v1beta',
+        'timeout' => (int) env('GEMINI_TIMEOUT', 35),
+    ],
+
 ];
