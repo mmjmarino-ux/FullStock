@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
+use App\Models\PasswordResetRequest;
 use Throwable;
 
 class AuthController extends Controller
@@ -126,6 +127,129 @@ class AuthController extends Controller
         ]);
     }
 
+    public function submitPasswordResetRequest(Request $request)
+    {
+        $data = $request->validate([
+            'email' => ['required', 'email', 'max:255'],
+            'message' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $email = mb_strtolower(trim($data['email']));
+
+        $isStaffAccount = User::query()
+            ->whereRaw('LOWER(email) = ?', [$email])
+            ->whereRaw('LOWER(TRIM(role)) = ?', ['staff'])
+            ->exists();
+
+        if ($isStaffAccount) {
+            $alreadyPending = PasswordResetRequest::query()
+                ->whereRaw('LOWER(email) = ?', [$email])
+                ->where('status', 'pending')
+                ->exists();
+
+            if (!$alreadyPending) {
+                PasswordResetRequest::create([
+                    'email' => $email,
+                    'message' => $data['message'] ?? null,
+                ]);
+            }
+        }
+
+        return response()->json([
+            'message' => 'If this email belongs to a staff account, the request has been sent to an administrator.',
+        ]);
+    }
+
+    public function pendingPasswordResetRequests()
+    {
+        $requests = PasswordResetRequest::query()
+            ->where('status', 'pending')
+            ->latest()
+            ->limit(100)
+            ->get(['id', 'email', 'message', 'status', 'created_at']);
+
+        return response()->json(['requests' => $requests]);
+    }
+
+    public function deletePasswordResetRequest(PasswordResetRequest $passwordResetRequest)
+    {
+        if ($passwordResetRequest->status !== 'pending') {
+            return response()->json([
+                'message' => 'Only pending requests can be deleted.',
+            ], 409);
+        }
+
+        $passwordResetRequest->delete();
+
+        return response()->json([
+            'message' => 'Password reset request deleted.',
+        ]);
+    }
+
+    public function resetStaffPassword(Request $request, PasswordResetRequest $passwordResetRequest)
+    {
+        if ($passwordResetRequest->status !== 'pending') {
+            return response()->json(['message' => 'This request has already been handled.'], 409);
+        }
+
+        $email = mb_strtolower(trim($passwordResetRequest->email));
+
+        $staff = User::query()
+            ->whereRaw('LOWER(email) = ?', [$email])
+            ->whereRaw('LOWER(TRIM(role)) = ?', ['staff'])
+            ->first();
+
+        if (!$staff) {
+            return response()->json(['message' => 'No staff account was found for this request.'], 404);
+        }
+
+        $temporaryPassword = Str::random(32);
+
+        $staff->forceFill([
+            'password' => Hash::make($temporaryPassword),
+            'must_change_password' => true,
+            'remember_token' => Str::random(60),
+        ])->save();
+
+        $staff->tokens()->delete();
+
+        $passwordResetRequest->forceFill([
+            'status' => 'completed',
+            'reviewed_by' => $request->user()->id,
+            'reviewed_at' => now(),
+        ])->save();
+
+        return response()->json([
+            'message' => 'Password reset. Give the temporary password to the staff member through a private channel.',
+            'temporary_password' => $temporaryPassword,
+        ]);
+    }
+
+    public function changeTemporaryPassword(Request $request)
+    {
+        $data = $request->validate([
+            'current_password' => ['required', 'string'],
+            'new_password' => ['required', 'string',     'min:12', 'confirmed', 'different:current_password'],
+        ]);
+
+        $user = $request->user();
+
+        if (!Hash::check($data['current_password'], $user->password)) {
+            return response()->json(['message' => 'The temporary password is incorrect.'], 422);
+        }
+
+        $user->forceFill([
+            'password' => Hash::make($data['new_password']),
+            'must_change_password' => false,
+            'remember_token' => Str::random(60),
+        ])->save();
+
+        return response()->json([
+            'message' => 'Password changed successfully.',
+            'user' => $this->userPayload($user),
+        ]);
+    }
+
     public function resetPassword(Request $request)
     {
         $data = $request->validate([
@@ -175,6 +299,7 @@ class AuthController extends Controller
             'name' => $user->name,
             'email' => $user->email,
             'role' => ucfirst($user->role),
+            'must_change_password' => (bool) $user->must_change_password,
         ];
     }
 }

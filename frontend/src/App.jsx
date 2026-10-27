@@ -94,7 +94,7 @@ function SmartLogo({ light = false, size = 'normal', animated = false }) {
   </div>
 }
 
-function LoginScreen({ onLogin, onForgotPassword, onResetPassword, onSetupAdministrator }) {
+function LoginScreen({ onLogin, onForgotPassword, onResetPassword, onSetupAdministrator, onSubmitPasswordResetRequest }) {
   const [mode, setMode] = useState(() => {
     const params = new URLSearchParams(window.location.search)
     return params.get('token') && params.get('email') ? 'reset' : 'login'
@@ -109,10 +109,12 @@ function LoginScreen({ onLogin, onForgotPassword, onResetPassword, onSetupAdmini
   const [busy, setBusy] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [formMessage, setFormMessage] = useState(null)
+  const [requestNote, setRequestNote] = useState('')
   useEffect(() => {
     api.setupStatus().then((result) => setSetupAvailable(Boolean(result.setup_available))).catch(() => {})
   }, [])
   const resettingPassword = mode === 'reset'
+  const contactingAdmin = mode === 'contactAdmin'
   const settingUpAdministrator = mode === 'setup'
   const showPasswordField = mode === 'login' || resettingPassword || settingUpAdministrator
   const switchMode = (nextMode) => {
@@ -123,7 +125,7 @@ function LoginScreen({ onLogin, onForgotPassword, onResetPassword, onSetupAdmini
       setResetToken('')
       window.history.replaceState({}, '', window.location.pathname)
     }
-    if (['forgot', 'reset'].includes(nextMode)) { setPassword(''); setShowPassword(false) }
+    if (['forgot', 'reset', 'contactAdmin'].includes(nextMode)) { setPassword(''); setShowPassword(false) }
   }
 
   const submit = async (event) => {
@@ -131,7 +133,10 @@ function LoginScreen({ onLogin, onForgotPassword, onResetPassword, onSetupAdmini
     setBusy(true)
     setFormMessage(null)
     try {
-      if (mode === 'forgot') {
+      if (contactingAdmin) {
+        const result = await onSubmitPasswordResetRequest({ email, message: requestNote })
+        setFormMessage({ type: 'success', text: result.message })
+      } else if (mode === 'forgot') {
         const result = await onForgotPassword(email)
         const localMail = result?.delivery_mode === 'log'
         setFormMessage({
@@ -156,7 +161,9 @@ function LoginScreen({ onLogin, onForgotPassword, onResetPassword, onSetupAdmini
     } finally { setBusy(false) }
   }
 
-  const heading = mode === 'forgot'
+  const heading = contactingAdmin
+      ? ['Contact an administrator', 'Request a password reset for your staff account.']
+      : mode === 'forgot'
       ? ['Forgot your password?', 'Enter your email and we’ll send a secure reset link.']
       : mode === 'reset'
         ? ['Reset your password', 'Choose a new password for your account.']
@@ -182,14 +189,15 @@ function LoginScreen({ onLogin, onForgotPassword, onResetPassword, onSetupAdmini
         <div className="login-heading"><span className="eyebrow">WELCOME TO FULLSTOCK</span><h2>{heading[0]}</h2><p>{heading[1]}</p></div>
         <form onSubmit={submit} className="login-form">
           {mode !== 'reset' && <label className="field-label">Email address<div className="input-shell"><Mail size={17} /><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required autoComplete="email" placeholder="name@example.com" /></div></label>}
+          {contactingAdmin && ( <label className="field-label"> Message to administrator (optional) <textarea className="text-input" value={requestNote} onChange={(event) => setRequestNote(event.target.value)} maxLength={1000} rows={3} placeholder="Tell the administrator how they can verify your request." /> </label> )}
           {settingUpAdministrator && <label className="field-label">Full name<div className="input-shell"><input type="text" value={name} onChange={(event) => setName(event.target.value)} required autoComplete="name" placeholder="Your name" /></div></label>}
           {settingUpAdministrator && <label className="field-label">One-time setup key<div className="input-shell"><input type="password" value={setupKey} onChange={(event) => setSetupKey(event.target.value)} required autoComplete="off" placeholder="Paste the Render setup key" /></div></label>}
           {resettingPassword && <label className="field-label">Email address<div className="input-shell"><Mail size={17} /><input type="email" value={email} readOnly autoComplete="email" /></div></label>}
           {showPasswordField && <label className="field-label">{resettingPassword ? 'New password' : settingUpAdministrator ? 'Create a password' : 'Password'}<div className="input-shell"><input type={showPassword ? 'text' : 'password'} value={password} onChange={(event) => setPassword(event.target.value)} required minLength={settingUpAdministrator ? 12 : resettingPassword ? 8 : undefined} autoComplete={resettingPassword || settingUpAdministrator ? 'new-password' : 'current-password'} placeholder={resettingPassword ? 'Enter a new password' : settingUpAdministrator ? 'Use at least 12 characters' : 'Enter your password'} /><button type="button" className="password-toggle" aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} onClick={() => setShowPassword((visible) => !visible)}>{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button></div></label>}
           {(resettingPassword || settingUpAdministrator) && <label className="field-label">Confirm password<div className="input-shell"><input type={showPassword ? 'text' : 'password'} value={passwordConfirmation} onChange={(event) => setPasswordConfirmation(event.target.value)} required minLength={settingUpAdministrator ? 12 : 8} autoComplete="new-password" placeholder="Enter the password again" /></div></label>}
-          {mode === 'login' && <div className="login-options"><label><input type="checkbox" defaultChecked /> Remember me</label><button type="button" className="link-button" onClick={() => switchMode('forgot')}>Forgot password?</button></div>}
+          {mode === 'login' && <div className="login-options"><label><input type="checkbox" defaultChecked /> Remember me</label><button type="button" className="link-button" onClick={() => switchMode('contactAdmin')}>Contact an administrator</button></div>}
           {formMessage && <p className={'auth-feedback auth-feedback-' + formMessage.type} role={formMessage.type === 'error' ? 'alert' : 'status'}>{formMessage.text}</p>}
-          <button className="button button-primary button-wide" disabled={busy}>{busy ? 'Please wait…' : mode === 'forgot' ? 'Send reset link' : resettingPassword ? 'Save new password' : settingUpAdministrator ? 'Create administrator' : 'Log in'}<ArrowUpRight size={16} /></button>
+          <button className="button button-primary button-wide" disabled={busy}>{busy ? 'Please wait…' : contactingAdmin ? 'Send request' : mode === 'forgot' ? 'Send reset link' : resettingPassword ? 'Save new password' : settingUpAdministrator ? 'Create administrator' : 'Log in'}<ArrowUpRight size={16} /></button>
         </form>
         {mode !== 'login' && <div className="login-switch">Remembered your password? <button type="button" className="link-button" onClick={() => switchMode('login')}>Back to log in</button></div>}
         {mode === 'login' && setupAvailable && <div className="login-switch">First time here? <button type="button" className="link-button" onClick={() => switchMode('setup')}>Set up administrator</button></div>}
@@ -1066,6 +1074,297 @@ function AssistantPage({ data, conversations, activeConversation, onNewChat, onS
   </>
 }
 
+function PasswordResetRequestsPanel({ demoSession }) {
+  const [requests, setRequests] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [busyId, setBusyId] = useState(null)
+  const [error, setError] = useState('')
+  const [temporaryPassword, setTemporaryPassword] = useState(null)
+  const [copyMessage, setCopyMessage] = useState('')
+  const [requestToReset, setRequestToReset] = useState(null)
+  const [requestToDelete, setRequestToDelete] = useState(null)
+
+  useEffect(() => {
+    if (demoSession) {
+      setLoading(false)
+      return
+    }
+
+    api.passwordResetRequests()
+      .then((result) => setRequests(result.requests || []))
+      .catch((requestError) => setError(requestError.message || 'Could not load requests.'))
+      .finally(() => setLoading(false))
+  }, [demoSession])
+
+  const resetRequest = async (resetRequestItem) => {
+    setBusyId(resetRequestItem.id)
+    setError('')
+    setTemporaryPassword(null)
+    setCopyMessage('')
+
+    try {
+      const result = await api.resetStaffPassword(resetRequestItem.id)
+      setRequests((current) => current.filter((item) => item.id !== resetRequestItem.id))
+      setTemporaryPassword({
+        email: resetRequestItem.email,
+        value: result.temporary_password,
+      })
+    } catch (requestError) {
+      setError(requestError.message || 'Could not reset this password.')
+    } finally {
+      setBusyId(null)
+    }
+  }
+  const deleteRequest = async (deleteRequestItem) => {
+  setBusyId(deleteRequestItem.id)
+  setError('')
+
+  try {
+    await api.deletePasswordResetRequest(deleteRequestItem.id)
+    setRequests((current) => current.filter((item) => item.id !== deleteRequestItem.id))
+    setRequestToDelete(null)
+  } catch (requestError) {
+    setError(requestError.message || 'Could not delete this request.')
+    setRequestToDelete(null)
+  } finally {
+    setBusyId(null)
+  }
+}
+  const copyTemporaryPassword = async () => {
+    if (!temporaryPassword) return
+
+    try {
+      await navigator.clipboard.writeText(temporaryPassword.value)
+      setCopyMessage('Copied. Share it with the staff member privately.')
+    } catch {
+      setCopyMessage('Copy is unavailable here. Select the password above and copy it manually.')
+    }
+  }
+
+  return (
+    <div className="settings-content">
+      <div className="staff-account-intro">
+        <strong>Password reset requests</strong>
+        <span>Verify each staff member’s identity before resetting their password. Give the temporary password to them privately.</span>
+      </div>
+
+      {demoSession && (
+        <p className="auth-feedback auth-feedback-info" role="status">
+          Sign in with your administrator account while Laravel is running to load live requests.
+        </p>
+      )}
+
+      {error && <p className="auth-feedback auth-feedback-error" role="alert">{error}</p>}
+
+      {temporaryPassword && (
+        <div className="auth-feedback auth-feedback-success" role="status">
+          <strong>Temporary password for {temporaryPassword.email}</strong>
+          <p>
+            Copy this before leaving the page. It won’t be shown again, and you’ll need to reset the password again if it’s lost.
+          </p>
+          <code>{temporaryPassword.value}</code>
+          <div className="settings-save-row">
+            <span>Give it to the staff member through a private channel.</span>
+            <button
+              type="button"
+              className="button button-outline button-small"
+              onClick={copyTemporaryPassword}
+            >
+              Copy temporary password
+            </button>
+          </div>
+          {copyMessage && <p role="status">{copyMessage}</p>}
+        </div>
+      )}
+
+      {loading && <p>Loading requests…</p>}
+      {!loading && !demoSession && requests.length === 0 && <p>No pending password reset requests.</p>}
+
+      {requests.map((item) => (
+        <div className="staff-account-intro" key={item.id}>
+          <strong>{item.email}</strong>
+          <span>Submitted {new Date(item.created_at).toLocaleString()}</span>
+          {item.message && <p>{item.message}</p>}
+          <div className="modal-actions">
+            <button
+              type="button"
+              className="button button-primary"
+              disabled={busyId !== null || demoSession}
+              onClick={() => setRequestToReset(item)}
+            >
+              {busyId === item.id ? 'Resetting…' : 'Verify and reset password'}
+            </button>
+            <button
+              type="button"
+              className="button button-outline"
+              disabled={busyId !== null || demoSession}
+              onClick={() => setRequestToDelete(item)}
+            >
+              Delete request
+            </button>
+          </div>
+        </div>
+      ))}
+      {requestToReset && (
+        <Modal
+          title="Verify staff identity"
+          subtitle="Confirm this request before resetting the password."
+          onClose={() => setRequestToReset(null)}
+        >
+          <div className="modal-form">
+            <p>
+              Have you verified <strong>{requestToReset.email}</strong> through a trusted channel?
+            </p>
+            <p>The temporary password will appear once after the reset. Give it to the staff member privately.</p>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="button button-outline"
+                onClick={() => setRequestToReset(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="button button-primary"
+                disabled={busyId !== null}
+                onClick={() => {
+                  const selectedRequest = requestToReset
+                  setRequestToReset(null)
+                  resetRequest(selectedRequest)
+                }}
+              >
+                Confirm reset
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+      {requestToDelete && (
+        <Modal
+          title="Delete password reset request?"
+          subtitle="This removes the request only. It does not change the staff member’s password."
+          onClose={() => setRequestToDelete(null)}
+        >
+          <div className="modal-form">
+            <p>
+              Delete the pending request for <strong>{requestToDelete.email}</strong>?
+            </p>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="button button-outline"
+                onClick={() => setRequestToDelete(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="button button-primary"
+                disabled={busyId !== null}
+                onClick={() => deleteRequest(requestToDelete)}
+              >
+                Delete request
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </div>
+  )
+}
+
+function TemporaryPasswordChangeScreen({ user, onChangePassword, onSignOut }) {
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmation, setConfirmation] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  const submit = async (event) => {
+    event.preventDefault()
+    setBusy(true)
+    setError('')
+
+    try {
+      await onChangePassword({
+        current_password: currentPassword,
+        new_password: newPassword,
+        new_password_confirmation: confirmation,
+      })
+    } catch (requestError) {
+      setError(requestError.message || 'Could not change the password.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="login-screen">
+      <section className="login-form-panel">
+        <div className="login-mobile-brand"><SmartLogo animated /></div>
+        <div className="login-form-wrap">
+          <div className="login-heading">
+            <span className="eyebrow">ACCOUNT SECURITY</span>
+            <h2>Choose a new password</h2>
+            <p>Your administrator issued a temporary password for {user?.email}. Change it to continue.</p>
+          </div>
+          <form onSubmit={submit} className="login-form">
+            <label className="field-label">
+              Temporary password
+              <input className="text-input" type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} required autoComplete="current-password" />
+            </label>
+            <label className="field-label">
+              New password
+              <input className="text-input" type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} required minLength={12} autoComplete="new-password" />
+            </label>
+            <label className="field-label">
+              Confirm new password
+              <input className="text-input" type="password" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} required minLength={12} autoComplete="new-password" />
+            </label>
+            {error && <p className="auth-feedback auth-feedback-error" role="alert">{error}</p>}
+            <button className="button button-primary button-wide" disabled={busy}>
+              {busy ? 'Saving…' : 'Change password'}
+            </button>
+          </form>
+          <button type="button" className="link-button" onClick={onSignOut}>Sign out</button>
+        </div>
+      </section>
+      <section className="login-brand-panel">
+        <div className="login-panel-top">
+          <SmartLogo light size="large" animated />
+          <span className="login-orbit orbit-one" />
+          <span className="login-orbit orbit-two" />
+        </div>
+
+        <div className="login-brand-copy">
+          <span className="eyebrow">ACCOUNT SECURITY</span>
+          <h1>Make your account yours.</h1>
+          <p>Choose a strong, private password to keep your FullStock account secure.</p>
+          <div className="login-mini-stat">
+            <div className="mini-stat-icon"><BarChart3 size={17} /></div>
+            <div>
+              <strong>One quick security step</strong>
+              <span>Once you save your new password, you can continue to your workspace.</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="login-decoration">
+          <div className="crate crate-large" />
+          <div className="crate crate-small" />
+          <div className="login-glow" />
+        </div>
+
+        <div className="login-panel-footer">
+          <span>FULLSTOCK INVENTORY SUITE</span>
+          <span>ACCOUNT SECURITY</span>
+        </div>
+      </section>
+    </div>
+  )
+}
+
 function SettingsPage({ user, onToast, onCreateStaffAccount, demoSession }) {
   const [tab, setTab] = useState('Profile')
   const [name, setName] = useState(user?.name || 'Admin')
@@ -1077,7 +1376,7 @@ function SettingsPage({ user, onToast, onCreateStaffAccount, demoSession }) {
   const [staffBusy, setStaffBusy] = useState(false)
   const [staffMessage, setStaffMessage] = useState(null)
   const isAdmin = ['admin', 'administrator'].includes(user?.role?.toLowerCase())
-  const tabs = ['Profile', 'Business', 'Notifications', ...(isAdmin ? ['Staff accounts'] : [])]
+ const tabs = ['Profile', 'Business', 'Notifications', ...(isAdmin ? ['Staff accounts', 'Password reset requests'] : [])]
   const createStaffAccount = async (event) => {
     event.preventDefault()
     setStaffBusy(true)
@@ -1098,7 +1397,7 @@ function SettingsPage({ user, onToast, onCreateStaffAccount, demoSession }) {
   }
   return <>
     <SectionHeading eyebrow="WORKSPACE" title="Settings" subtitle="Manage your profile and business preferences." />
-    <div className="panel settings-panel"><div className="settings-tabs">{tabs.map((value) => <button key={value} className={tab === value ? 'settings-tab-active' : ''} onClick={() => setTab(value)}>{value}</button>)}</div>{tab === 'Profile' ? <div className="settings-content"><div className="settings-avatar-row"><div className="avatar avatar-large">{name.charAt(0).toUpperCase()}</div><div><strong>Profile photo</strong><span>Choose an image to personalize your account.</span></div><button className="button button-outline button-small" onClick={() => onToast('Profile photo upload can be connected to cloud storage.')}>Upload photo</button></div><div className="settings-form"><label className="field-label">Full name<input className="text-input" value={name} onChange={(event) => setName(event.target.value)} /></label><label className="field-label">Email address<input className="text-input" value={email} onChange={(event) => setEmail(event.target.value)} /></label><label className="field-label">Role<input className="text-input" value={roleLabel(user?.role)} readOnly /></label></div><div className="settings-save-row"><span>Profile information for the signed-in account.</span><button className="button button-primary" onClick={() => onToast('Profile settings saved.')}>Save changes</button></div></div> : tab === 'Staff accounts' && isAdmin ? <form className="settings-content" onSubmit={createStaffAccount}><div className="staff-account-intro"><strong>Create a staff account</strong><span>Create a team login with the staff role. Staff can work with sales and inventory.</span></div><div className="settings-form"><label className="field-label">Full name<input className="text-input" value={staffName} onChange={(event) => setStaffName(event.target.value)} required autoComplete="name" placeholder="Staff member name" /></label><label className="field-label">Email address<input className="text-input" type="email" value={staffEmail} onChange={(event) => setStaffEmail(event.target.value)} required autoComplete="email" placeholder="staff@example.com" /></label><label className="field-label">Temporary password<input className="text-input" type="password" value={staffPassword} onChange={(event) => setStaffPassword(event.target.value)} required minLength={8} autoComplete="new-password" placeholder="At least 8 characters" /></label><label className="field-label">Confirm password<input className="text-input" type="password" value={staffPasswordConfirmation} onChange={(event) => setStaffPasswordConfirmation(event.target.value)} required minLength={8} autoComplete="new-password" placeholder="Enter the password again" /></label></div>{demoSession && <p className="auth-feedback auth-feedback-info" role="status">You’re using local demo access. Sign out and log in with your real administrator account while Laravel is running to save a staff account.</p>}{staffMessage && <p className={'auth-feedback auth-feedback-' + staffMessage.type} role={staffMessage.type === 'error' ? 'alert' : 'status'}>{staffMessage.text}</p>}<div className="settings-save-row"><span>New accounts are assigned the Staff role.</span><button className="button button-primary" disabled={staffBusy || demoSession}>{demoSession ? 'Sign in to create staff' : staffBusy ? 'Creating account…' : 'Create staff account'}</button></div></form> : <div className="settings-content settings-placeholder"><Settings size={24} /><strong>{tab} settings</strong><span>Business preferences will be available here.</span></div>}</div>
+    <div className="panel settings-panel"><div className="settings-tabs">{tabs.map((value) => <button key={value} className={tab === value ? 'settings-tab-active' : ''} onClick={() => setTab(value)}>{value}</button>)}</div>{tab === 'Profile' ? <div className="settings-content"><div className="settings-avatar-row"><div className="avatar avatar-large">{name.charAt(0).toUpperCase()}</div><div><strong>Profile photo</strong><span>Choose an image to personalize your account.</span></div><button className="button button-outline button-small" onClick={() => onToast('Profile photo upload can be connected to cloud storage.')}>Upload photo</button></div><div className="settings-form"><label className="field-label">Full name<input className="text-input" value={name} onChange={(event) => setName(event.target.value)} /></label><label className="field-label">Email address<input className="text-input" value={email} onChange={(event) => setEmail(event.target.value)} /></label><label className="field-label">Role<input className="text-input" value={roleLabel(user?.role)} readOnly /></label></div><div className="settings-save-row"><span>Profile information for the signed-in account.</span><button className="button button-primary" onClick={() => onToast('Profile settings saved.')}>Save changes</button></div></div> : tab === 'Staff accounts' && isAdmin ? <form className="settings-content" onSubmit={createStaffAccount}><div className="staff-account-intro"><strong>Create a staff account</strong><span>Create a team login with the staff role. Staff can work with sales and inventory.</span></div><div className="settings-form"><label className="field-label">Full name<input className="text-input" value={staffName} onChange={(event) => setStaffName(event.target.value)} required autoComplete="name" placeholder="Staff member name" /></label><label className="field-label">Email address<input className="text-input" type="email" value={staffEmail} onChange={(event) => setStaffEmail(event.target.value)} required autoComplete="email" placeholder="staff@example.com" /></label><label className="field-label">Temporary password<input className="text-input" type="password" value={staffPassword} onChange={(event) => setStaffPassword(event.target.value)} required minLength={8} autoComplete="new-password" placeholder="At least 8 characters" /></label><label className="field-label">Confirm password<input className="text-input" type="password" value={staffPasswordConfirmation} onChange={(event) => setStaffPasswordConfirmation(event.target.value)} required minLength={8} autoComplete="new-password" placeholder="Enter the password again" /></label></div>{demoSession && <p className="auth-feedback auth-feedback-info" role="status">You’re using local demo access. Sign out and log in with your real administrator account while Laravel is running to save a staff account.</p>}{staffMessage && <p className={'auth-feedback auth-feedback-' + staffMessage.type} role={staffMessage.type === 'error' ? 'alert' : 'status'}>{staffMessage.text}</p>}<div className="settings-save-row"><span>New accounts are assigned the Staff role.</span><button className="button button-primary" disabled={staffBusy || demoSession}>{demoSession ? 'Sign in to create staff' : staffBusy ? 'Creating account…' : 'Create staff account'}</button></div></form>: tab === 'Password reset requests' && isAdmin ? <PasswordResetRequestsPanel demoSession={demoSession} /> : <div className="settings-content settings-placeholder"><Settings size={24} /><strong>{tab} settings</strong><span>Business preferences will be available here.</span></div>}</div>
   </>
 }
 
@@ -1206,7 +1505,12 @@ function App() {
     }, 180)
     return () => window.clearTimeout(timer)
   }, [assistantOwner, assistantStore])
-  useEffect(() => { if (session && !session.demo) loadWorkspace().then((loaded) => persist({ ...readStoredData(), ...loaded })).catch(() => notify('API is unavailable. Demo records are shown until the Laravel server is connected.')) }, [session?.token])
+  useEffect(() => {
+  if (!session?.token || session.demo || session.user?.must_change_password) return
+  loadWorkspace()
+    .then((loaded) => persist({ ...readStoredData(), ...loaded }))
+    .catch(() => notify('API is unavailable. Demo records are shown until the Laravel server is connected.'))
+}, [session?.token, session?.demo, session?.user?.must_change_password])
   useEffect(() => {
     if (!session?.token || active !== 'Reports') return
     refreshReportData({ silent: true })
@@ -1229,6 +1533,12 @@ function App() {
         ? 'Cannot reach the Laravel API. Start the backend server, then sign in again.'
         : error.message)
     }
+  }
+  const changeTemporaryPassword = async (values) => {
+    const result = await api.changeTemporaryPassword(values)
+    setSession((current) => current ? { ...current, user: result.user } : current)
+    notify('Your password has been changed.')
+    return result
   }
   const createStaffAccount = async (values) => {
     const isAdmin = ['admin', 'administrator'].includes(session?.user?.role?.toLowerCase())
@@ -1347,8 +1657,15 @@ function App() {
     return true
   }
 
-  if (!session) return <LoginScreen onLogin={login} onSetupAdministrator={api.setupAdministrator} onForgotPassword={api.forgotPassword} onResetPassword={api.resetPassword} />
+  if (!session) return <LoginScreen onLogin={login} onSetupAdministrator={api.setupAdministrator} onForgotPassword={api.forgotPassword} onResetPassword={api.resetPassword} onSubmitPasswordResetRequest={api.submitPasswordResetRequest} />
 
+  if (session.user?.must_change_password) {
+    return <TemporaryPasswordChangeScreen
+      user={session.user}
+      onChangePassword={changeTemporaryPassword}
+      onSignOut={signOut}
+    />
+  }
   const role = session.user?.role?.toLowerCase()
   const isStaff = role === 'staff'
   const canManageWorkspace = role === 'admin' || role === 'administrator'
