@@ -39,6 +39,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::apiResource('suppliers', SupplierController::class)->only(['store', 'update', 'destroy']);
             Route::post('/inventory/adjustments', [InventoryController::class, 'adjust']);
             Route::delete('/password-reset-requests/{passwordResetRequest}', [AuthController::class, 'deletePasswordResetRequest']);
+            Route::get('/staff-accounts', [AuthController::class, 'staffAccounts']);
         });
     });
 });

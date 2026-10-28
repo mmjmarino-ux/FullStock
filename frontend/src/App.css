@@ -1407,3 +1407,39 @@ input[type="number"] { font-family: var(--font-mono); font-variant-numeric: tabu
   .assistant-chat-actions { width: 100%; }
   .assistant-chat-actions select { width: auto; max-width: none; flex: 1; }
 }
+.staff-section {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.staff-create-section {
+  margin-top: 22px;
+}
+
+.staff-section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.staff-section-heading h3,
+.staff-section-heading p {
+  margin: 0;
+}
+
+.staff-section-heading h3 {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.staff-section-heading p {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}

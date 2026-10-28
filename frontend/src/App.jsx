@@ -1375,8 +1375,36 @@ function SettingsPage({ user, onToast, onCreateStaffAccount, demoSession }) {
   const [staffPasswordConfirmation, setStaffPasswordConfirmation] = useState('')
   const [staffBusy, setStaffBusy] = useState(false)
   const [staffMessage, setStaffMessage] = useState(null)
+  const [staffAccounts, setStaffAccounts] = useState([])
+  const [staffListLoading, setStaffListLoading] = useState(false)
+  const [staffListError, setStaffListError] = useState('')
   const isAdmin = ['admin', 'administrator'].includes(user?.role?.toLowerCase())
- const tabs = ['Profile', 'Business', 'Notifications', ...(isAdmin ? ['Staff accounts', 'Password reset requests'] : [])]
+  const tabs = ['Profile', 'Business', 'Notifications', ...(isAdmin ? ['Staff accounts', 'Password reset requests'] : [])]
+  const loadStaffAccounts = useCallback(async () => {
+  if (demoSession) {
+    setStaffAccounts([])
+    setStaffListLoading(false)
+    return
+  }
+
+  setStaffListLoading(true)
+  setStaffListError('')
+
+  try {
+    const result = await api.staffAccounts()
+    setStaffAccounts(result.staff || [])
+  } catch (error) {
+    setStaffListError(error.message || 'Could not load staff accounts.')
+  } finally {
+    setStaffListLoading(false)
+  }
+}, [demoSession])
+
+useEffect(() => {
+  if (tab === 'Staff accounts' && isAdmin) {
+    loadStaffAccounts()
+  }
+}, [tab, isAdmin, loadStaffAccounts])
   const createStaffAccount = async (event) => {
     event.preventDefault()
     setStaffBusy(true)
@@ -1397,8 +1425,254 @@ function SettingsPage({ user, onToast, onCreateStaffAccount, demoSession }) {
   }
   return <>
     <SectionHeading eyebrow="WORKSPACE" title="Settings" subtitle="Manage your profile and business preferences." />
-    <div className="panel settings-panel"><div className="settings-tabs">{tabs.map((value) => <button key={value} className={tab === value ? 'settings-tab-active' : ''} onClick={() => setTab(value)}>{value}</button>)}</div>{tab === 'Profile' ? <div className="settings-content"><div className="settings-avatar-row"><div className="avatar avatar-large">{name.charAt(0).toUpperCase()}</div><div><strong>Profile photo</strong><span>Choose an image to personalize your account.</span></div><button className="button button-outline button-small" onClick={() => onToast('Profile photo upload can be connected to cloud storage.')}>Upload photo</button></div><div className="settings-form"><label className="field-label">Full name<input className="text-input" value={name} onChange={(event) => setName(event.target.value)} /></label><label className="field-label">Email address<input className="text-input" value={email} onChange={(event) => setEmail(event.target.value)} /></label><label className="field-label">Role<input className="text-input" value={roleLabel(user?.role)} readOnly /></label></div><div className="settings-save-row"><span>Profile information for the signed-in account.</span><button className="button button-primary" onClick={() => onToast('Profile settings saved.')}>Save changes</button></div></div> : tab === 'Staff accounts' && isAdmin ? <form className="settings-content" onSubmit={createStaffAccount}><div className="staff-account-intro"><strong>Create a staff account</strong><span>Create a team login with the staff role. Staff can work with sales and inventory.</span></div><div className="settings-form"><label className="field-label">Full name<input className="text-input" value={staffName} onChange={(event) => setStaffName(event.target.value)} required autoComplete="name" placeholder="Staff member name" /></label><label className="field-label">Email address<input className="text-input" type="email" value={staffEmail} onChange={(event) => setStaffEmail(event.target.value)} required autoComplete="email" placeholder="staff@example.com" /></label><label className="field-label">Temporary password<input className="text-input" type="password" value={staffPassword} onChange={(event) => setStaffPassword(event.target.value)} required minLength={8} autoComplete="new-password" placeholder="At least 8 characters" /></label><label className="field-label">Confirm password<input className="text-input" type="password" value={staffPasswordConfirmation} onChange={(event) => setStaffPasswordConfirmation(event.target.value)} required minLength={8} autoComplete="new-password" placeholder="Enter the password again" /></label></div>{demoSession && <p className="auth-feedback auth-feedback-info" role="status">You’re using local demo access. Sign out and log in with your real administrator account while Laravel is running to save a staff account.</p>}{staffMessage && <p className={'auth-feedback auth-feedback-' + staffMessage.type} role={staffMessage.type === 'error' ? 'alert' : 'status'}>{staffMessage.text}</p>}<div className="settings-save-row"><span>New accounts are assigned the Staff role.</span><button className="button button-primary" disabled={staffBusy || demoSession}>{demoSession ? 'Sign in to create staff' : staffBusy ? 'Creating account…' : 'Create staff account'}</button></div></form>: tab === 'Password reset requests' && isAdmin ? <PasswordResetRequestsPanel demoSession={demoSession} /> : <div className="settings-content settings-placeholder"><Settings size={24} /><strong>{tab} settings</strong><span>Business preferences will be available here.</span></div>}</div>
-  </>
+    <div className="panel settings-panel">
+  <div className="settings-tabs">
+    {tabs.map((value) => (
+      <button
+        key={value}
+        className={tab === value ? 'settings-tab-active' : ''}
+        onClick={() => setTab(value)}
+      >
+        {value}
+      </button>
+    ))}
+  </div>
+
+  {tab === 'Profile' ? (
+    <div className="settings-content">
+      <div className="settings-avatar-row">
+        <div className="avatar avatar-large">
+          {name.charAt(0).toUpperCase()}
+        </div>
+
+        <div>
+          <strong>Profile photo</strong>
+          <span>Choose an image to personalize your account.</span>
+        </div>
+
+        <button
+          className="button button-outline button-small"
+          onClick={() =>
+            onToast('Profile photo upload can be connected to cloud storage.')
+          }
+        >
+          Upload photo
+        </button>
+      </div>
+
+      <div className="settings-form">
+        <label className="field-label">
+          Full name
+          <input
+            className="text-input"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+          />
+        </label>
+
+        <label className="field-label">
+          Email address
+          <input
+            className="text-input"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+          />
+        </label>
+
+        <label className="field-label">
+          Role
+          <input
+            className="text-input"
+            value={roleLabel(user?.role)}
+            readOnly
+          />
+        </label>
+      </div>
+
+      <div className="settings-save-row">
+        <span>Profile information for the signed-in account.</span>
+        <button
+          className="button button-primary"
+          onClick={() => onToast('Profile settings saved.')}
+        >
+          Save changes
+        </button>
+      </div>
+    </div>
+  ) : tab === 'Staff accounts' && isAdmin ? (
+  <form className="settings-content" onSubmit={createStaffAccount}>
+    <section className="staff-section">
+      <div className="staff-section-heading">
+        <div>
+          <h3>Current staff accounts</h3>
+          <p>Staff members who can access this workspace.</p>
+        </div>
+
+        <button
+          type="button"
+          className="button button-outline button-small"
+          onClick={loadStaffAccounts}
+          disabled={staffListLoading || demoSession}
+        >
+          {staffListLoading ? 'Refreshing…' : 'Refresh list'}
+        </button>
+      </div>
+
+      {staffListError && (
+        <p className="auth-feedback auth-feedback-error" role="alert">
+          {staffListError}
+        </p>
+      )}
+
+      <div className="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>NAME</th>
+              <th>EMAIL</th>
+              <th>ACCOUNT CREATED</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {staffAccounts.map((staff) => (
+              <tr key={staff.id}>
+                <td className="cell-strong">{staff.name}</td>
+                <td>{staff.email}</td>
+                <td>
+                  {staff.created_at
+                    ? new Date(staff.created_at).toLocaleDateString()
+                    : '—'}
+                </td>
+              </tr>
+            ))}
+
+            {!staffListLoading && !staffListError && staffAccounts.length === 0 && (
+              <tr>
+                <td colSpan={3}>
+                  {demoSession
+                    ? 'Sign in with your administrator account to view saved staff accounts.'
+                    : 'No staff accounts found.'}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {staffListLoading && <p>Loading staff accounts…</p>}
+    </section>
+
+    <section className="staff-section staff-create-section">
+      <div className="staff-section-heading">
+        <div>
+          <h3>Create a staff account</h3>
+          <p>
+            Create a team login with the staff role. Staff can work with sales
+            and inventory.
+          </p>
+        </div>
+      </div>
+
+      <div className="settings-form">
+        <label className="field-label">
+          Full name
+          <input
+            className="text-input"
+            value={staffName}
+            onChange={(event) => setStaffName(event.target.value)}
+            required
+            autoComplete="name"
+            placeholder="Staff member name"
+          />
+        </label>
+
+        <label className="field-label">
+          Email address
+          <input
+            className="text-input"
+            type="email"
+            value={staffEmail}
+            onChange={(event) => setStaffEmail(event.target.value)}
+            required
+            autoComplete="email"
+            placeholder="staff@example.com"
+          />
+        </label>
+
+        <label className="field-label">
+          Temporary password
+          <input
+            className="text-input"
+            type="password"
+            value={staffPassword}
+            onChange={(event) => setStaffPassword(event.target.value)}
+            required
+            minLength={8}
+            autoComplete="new-password"
+            placeholder="At least 8 characters"
+          />
+        </label>
+
+        <label className="field-label">
+          Confirm password
+          <input
+            className="text-input"
+            type="password"
+            value={staffPasswordConfirmation}
+            onChange={(event) =>
+              setStaffPasswordConfirmation(event.target.value)
+            }
+            required
+            minLength={8}
+            autoComplete="new-password"
+            placeholder="Enter the password again"
+          />
+        </label>
+      </div>
+
+      {demoSession && (
+        <p className="auth-feedback auth-feedback-info" role="status">
+          You’re using local demo access. Sign in with your administrator
+          account while Laravel is running to create a saved staff account.
+        </p>
+      )}
+
+      {staffMessage && (
+        <p
+          className={'auth-feedback auth-feedback-' + staffMessage.type}
+          role={staffMessage.type === 'error' ? 'alert' : 'status'}
+        >
+          {staffMessage.text}
+        </p>
+      )}
+
+      <div className="settings-save-row">
+        <span>New accounts are assigned the Staff role.</span>
+        <button
+          className="button button-primary"
+          disabled={staffBusy || demoSession}
+        >
+          {demoSession
+            ? 'Sign in to create staff'
+            : staffBusy
+              ? 'Creating account…'
+              : 'Create staff account'}
+        </button>
+      </div>
+    </section>
+  </form>
+  ) : tab === 'Password reset requests' && isAdmin ? (
+    <PasswordResetRequestsPanel demoSession={demoSession} />
+  ) : (
+    <div className="settings-content settings-placeholder">
+      <Settings size={24} />
+      <strong>{tab} settings</strong>
+      <span>Business preferences will be available here.</span>
+    </div>
+  )}
+</div>
+</>
 }
 
 function TableFooter({ count, total, page = 1, pages = 1, onPage = () => {} }) {

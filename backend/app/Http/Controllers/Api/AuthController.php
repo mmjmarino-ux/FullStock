@@ -77,6 +77,16 @@ class AuthController extends Controller
         ], 201);
     }
 
+    public function staffAccounts()
+    {
+        $staff = User::query()
+            ->whereRaw('LOWER(TRIM(role)) = ?', ['staff'])
+            ->orderBy('name')
+            ->get(['id', 'name', 'email', 'created_at']);
+
+        return response()->json(['staff' => $staff]);
+    }
+
     public function login(Request $request)
     {
         $data = $request->validate([

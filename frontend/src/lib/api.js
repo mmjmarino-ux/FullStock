@@ -83,6 +83,7 @@ export const api = {
   setupAdministrator: (data) => request('/setup/administrator', { method: 'POST', body: JSON.stringify(data) }),
   login: (email, password) => request('/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
   createStaffAccount: (data) => request('/staff-accounts', { method: 'POST', body: JSON.stringify(data) }),
+  staffAccounts: () => request('/staff-accounts'),
   forgotPassword: (email) => request('/forgot-password', { method: 'POST', body: JSON.stringify({ email }) }),
   submitPasswordResetRequest: (data) => request('/password-reset-requests', { method: 'POST', body: JSON.stringify(data)}),
   passwordResetRequests: () => request('/password-reset-requests'),
