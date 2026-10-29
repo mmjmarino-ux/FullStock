@@ -86,6 +86,26 @@ class AuthController extends Controller
 
         return response()->json(['staff' => $staff]);
     }
+    public function updateStaffAccount(Request $request, User $staff)
+    {
+        if (strtolower(trim((string) $staff->role)) !== 'staff') {
+            return response()->json([
+                'message' => 'Only staff account details can be edited here.',
+            ], 404);
+        }
+
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:120'],
+            'email' => ['required', 'email', 'max:255', 'unique:users,email,' . $staff->id],
+        ]);
+
+        $staff->update($data);
+
+        return response()->json([
+            'staff' => $staff->only(['id', 'name', 'email', 'created_at', 'is_active']),
+            'message' => 'Staff account details updated.',
+        ]);
+    }
 
     public function updateStaffAccountStatus(Request $request, User $staff)
     {
@@ -300,7 +320,7 @@ class AuthController extends Controller
         $user = $request->user();
 
         if (!Hash::check($data['current_password'], $user->password)) {
-            return response()->json(['message' => 'The temporary password is incorrect.'], 422);
+            return response()->json(['message' => 'The current password is incorrect.'], 422);
         }
 
         $user->forceFill([

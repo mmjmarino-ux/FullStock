@@ -110,6 +110,7 @@ function LoginScreen({ onLogin, onForgotPassword, onResetPassword, onSetupAdmini
   const [showPassword, setShowPassword] = useState(false)
   const [formMessage, setFormMessage] = useState(null)
   const [requestNote, setRequestNote] = useState('')
+  const [rememberMe, setRememberMe] = useState(false)
   useEffect(() => {
     api.setupStatus().then((result) => setSetupAvailable(Boolean(result.setup_available))).catch(() => {})
   }, [])
@@ -152,9 +153,9 @@ function LoginScreen({ onLogin, onForgotPassword, onResetPassword, onSetupAdmini
         setFormMessage({ type: 'success', text: 'Your password has been reset. Sign in with your new password.' })
       } else if (settingUpAdministrator) {
         await onSetupAdministrator({ setup_key: setupKey, name, email, password, password_confirmation: passwordConfirmation })
-        await onLogin(email, password)
+        await onLogin(email, password, rememberMe)
       } else {
-        await onLogin(email, password)
+        await onLogin(email, password, rememberMe)
       }
     } catch (error) {
       setFormMessage({ type: 'error', text: error.message || 'Unable to complete your request.' })
@@ -195,7 +196,7 @@ function LoginScreen({ onLogin, onForgotPassword, onResetPassword, onSetupAdmini
           {resettingPassword && <label className="field-label">Email address<div className="input-shell"><Mail size={17} /><input type="email" value={email} readOnly autoComplete="email" /></div></label>}
           {showPasswordField && <label className="field-label">{resettingPassword ? 'New password' : settingUpAdministrator ? 'Create a password' : 'Password'}<div className="input-shell"><input type={showPassword ? 'text' : 'password'} value={password} onChange={(event) => setPassword(event.target.value)} required minLength={settingUpAdministrator ? 12 : resettingPassword ? 8 : undefined} autoComplete={resettingPassword || settingUpAdministrator ? 'new-password' : 'current-password'} placeholder={resettingPassword ? 'Enter a new password' : settingUpAdministrator ? 'Use at least 12 characters' : 'Enter your password'} /><button type="button" className="password-toggle" aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} onClick={() => setShowPassword((visible) => !visible)}>{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button></div></label>}
           {(resettingPassword || settingUpAdministrator) && <label className="field-label">Confirm password<div className="input-shell"><input type={showPassword ? 'text' : 'password'} value={passwordConfirmation} onChange={(event) => setPasswordConfirmation(event.target.value)} required minLength={settingUpAdministrator ? 12 : 8} autoComplete="new-password" placeholder="Enter the password again" /></div></label>}
-          {mode === 'login' && <div className="login-options"><label><input type="checkbox" defaultChecked /> Remember me</label><button type="button" className="link-button" onClick={() => switchMode('contactAdmin')}>Contact an administrator</button></div>}
+          {mode === 'login' && <div className="login-options"><label><input type="checkbox" checked={rememberMe} onChange={(event) => setRememberMe(event.target.checked)} /> Remember me</label><button type="button" className="link-button" onClick={() => switchMode('contactAdmin')}>Contact an administrator</button></div>}
           {formMessage && <p className={'auth-feedback auth-feedback-' + formMessage.type} role={formMessage.type === 'error' ? 'alert' : 'status'}>{formMessage.text}</p>}
           <button className="button button-primary button-wide" disabled={busy}>{busy ? 'Please wait…' : contactingAdmin ? 'Send request' : mode === 'forgot' ? 'Send reset link' : resettingPassword ? 'Save new password' : settingUpAdministrator ? 'Create administrator' : 'Log in'}<ArrowUpRight size={16} /></button>
         </form>
@@ -218,7 +219,7 @@ function Sidebar({ active, onNavigate, onSignOut, mobileOpen, closeMobile, user,
         {visibleNav.map(({ label, icon: Icon }) => <button key={label} className={'nav-item ' + (active === label ? 'nav-active' : '')} onClick={() => { onNavigate(label); closeMobile() }}><Icon size={18} strokeWidth={1.85} /><span>{label}</span>{label === 'Inventory' && lowStockCount > 0 && <i className="nav-badge">{lowStockCount}</i>}</button>)}
       </nav>
       <div className="sidebar-bottom">
-        {['admin', 'administrator'].includes(user?.role?.toLowerCase()) && <><div className="nav-caption">PREFERENCES</div>
+        {['admin', 'administrator', 'staff'].includes(user?.role?.toLowerCase()) && <><div className="nav-caption">PREFERENCES</div>
         <button className={'nav-item ' + (active === 'Settings' ? 'nav-active' : '')} onClick={() => onNavigate('Settings')}><Settings size={18} /><span>Settings</span></button></>}
         <div className="sidebar-help"><div className="help-icon">?</div><strong>Need a hand?</strong><span>Visit the help center</span><button onClick={() => onNavigate('Help')}>Get support <ArrowUpRight size={13} /></button></div>
         <button className="sidebar-user" aria-label="Log out" onClick={onSignOut}><div className="avatar avatar-small">{(user?.name || 'Admin').charAt(0).toUpperCase()}</div><div className="sidebar-user-copy"><strong>{user?.name || 'Admin'}</strong><span>{roleLabel(user?.role)}</span></div><LogOut size={16} /></button>
@@ -547,7 +548,6 @@ function HelpPage({ onNavigate }) {
   return <>
     <SectionHeading eyebrow="SUPPORT" title="Help center" subtitle="Quick guidance for the everyday tasks in FullStock." />
     <div className="help-guides">{guides.map(({ title, text, page, icon: Icon }) => <article className="panel help-guide" key={title}><span className="help-guide-icon"><Icon size={19} /></span><div><h2>{title}</h2><p>{text}</p><button className="text-button" onClick={() => onNavigate(page)}>Open {page} <ArrowUpRight size={14} /></button></div></article>)}</div>
-    <div className="panel help-contact"><div className="help-icon">?</div><div><strong>Need more help?</strong><span>Ask your FullStock administrator for account, supplier, or workspace support.</span></div></div>
   </>
 }
 
@@ -1365,10 +1365,15 @@ function TemporaryPasswordChangeScreen({ user, onChangePassword, onSignOut }) {
   )
 }
 
-function SettingsPage({ user, onToast, onCreateStaffAccount, demoSession }) {
+function SettingsPage({ user, onToast, onCreateStaffAccount, onChangePassword, demoSession }) {
   const [tab, setTab] = useState('Profile')
   const [name, setName] = useState(user?.name || 'Admin')
   const [email, setEmail] = useState(user?.email || 'admin@fullstock.test')
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [passwordConfirmation, setPasswordConfirmation] = useState('')
+  const [passwordBusy, setPasswordBusy] = useState(false)
+  const [passwordMessage, setPasswordMessage] = useState(null)
   const [staffName, setStaffName] = useState('')
   const [staffEmail, setStaffEmail] = useState('')
   const [staffPassword, setStaffPassword] = useState('')
@@ -1387,8 +1392,15 @@ function SettingsPage({ user, onToast, onCreateStaffAccount, demoSession }) {
   const [staffPendingDelete, setStaffPendingDelete] = useState(null)
   const [staffPendingPermanentDelete, setStaffPendingPermanentDelete] = useState(null)
   const [staffPermanentDeleteId, setStaffPermanentDeleteId] = useState(null)
+  const [staffEditTarget, setStaffEditTarget] = useState(null)
+  const [staffEditName, setStaffEditName] = useState('')
+  const [staffEditEmail, setStaffEditEmail] = useState('')
+  const [staffEditSaving, setStaffEditSaving] = useState(false)
+  const [staffEditError, setStaffEditError] = useState('')
   const isAdmin = ['admin', 'administrator'].includes(user?.role?.toLowerCase())
-  const tabs = ['Profile', 'Business', 'Notifications', ...(isAdmin ? ['Staff accounts', 'Password reset requests'] : [])]
+  const tabs = isAdmin
+  ? ['Profile', 'Staff accounts', 'Password reset requests']
+  : ['Profile']
   const loadStaffAccounts = useCallback(async () => {
   if (demoSession) {
     setStaffAccounts([])
@@ -1461,6 +1473,71 @@ const confirmStaffPermanentDelete = async () => {
     setStaffPermanentDeleteId(null)
   }
 }
+const openStaffEdit = (staff) => {
+  setStaffEditTarget(staff)
+  setStaffEditName(staff.name)
+  setStaffEditEmail(staff.email)
+  setStaffEditError('')
+}
+
+const saveStaffEdit = async (event) => {
+  event.preventDefault()
+  if (!staffEditTarget) return
+
+  setStaffEditSaving(true)
+  setStaffEditError('')
+
+  try {
+    const result = await api.updateStaffAccount(staffEditTarget.id, {
+      name: staffEditName.trim(),
+      email: staffEditEmail.trim(),
+    })
+
+    setStaffAccounts((current) =>
+      current.map((account) =>
+        account.id === staffEditTarget.id
+          ? { ...account, ...result.staff }
+          : account
+      )
+    )
+
+    setStaffEditTarget(null)
+    onToast(result.message || 'Staff account details updated.')
+  } catch (error) {
+    setStaffEditError(error.message || 'Could not update staff details.')
+  } finally {
+    setStaffEditSaving(false)
+  }
+}
+
+const changeOwnPassword = async (event) => {
+  event.preventDefault()
+  setPasswordBusy(true)
+  setPasswordMessage(null)
+
+  try {
+    await onChangePassword({
+      current_password: currentPassword,
+      new_password: newPassword,
+      new_password_confirmation: passwordConfirmation,
+    })
+
+    setCurrentPassword('')
+    setNewPassword('')
+    setPasswordConfirmation('')
+    setPasswordMessage({
+      type: 'success',
+      text: 'Your password was changed.',
+    })
+  } catch (error) {
+    setPasswordMessage({
+      type: 'error',
+      text: error.message || 'Could not change your password.',
+    })
+  } finally {
+    setPasswordBusy(false)
+  }
+}
 
 useEffect(() => {
   if (tab === 'Staff accounts' && isAdmin) {
@@ -1486,7 +1563,7 @@ useEffect(() => {
     }
   }
   return <>
-    <SectionHeading eyebrow="WORKSPACE" title="Settings" subtitle="Manage your profile and business preferences." />
+    <SectionHeading eyebrow="WORKSPACE" title="Settings" subtitle="View your account details and manage your password." />
     <div className="panel settings-panel">
   <div className="settings-tabs">
     {tabs.map((value) => (
@@ -1502,65 +1579,113 @@ useEffect(() => {
 
   {tab === 'Profile' ? (
     <div className="settings-content">
-      <div className="settings-avatar-row">
-        <div className="avatar avatar-large">
-          {name.charAt(0).toUpperCase()}
-        </div>
-
-        <div>
-          <strong>Profile photo</strong>
-          <span>Choose an image to personalize your account.</span>
-        </div>
-
-        <button
-          className="button button-outline button-small"
-          onClick={() =>
-            onToast('Profile photo upload can be connected to cloud storage.')
-          }
-        >
-          Upload photo
-        </button>
-      </div>
-
-      <div className="settings-form">
-        <label className="field-label">
-          Full name
-          <input
-            className="text-input"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-          />
-        </label>
-
-        <label className="field-label">
-          Email address
-          <input
-            className="text-input"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-          />
-        </label>
-
-        <label className="field-label">
-          Role
-          <input
-            className="text-input"
-            value={roleLabel(user?.role)}
-            readOnly
-          />
-        </label>
-      </div>
-
-      <div className="settings-save-row">
-        <span>Profile information for the signed-in account.</span>
-        <button
-          className="button button-primary"
-          onClick={() => onToast('Profile settings saved.')}
-        >
-          Save changes
-        </button>
+  <section className="staff-section">
+    <div className="staff-section-heading">
+      <div>
+        <h3>Account details</h3>
+        <p>Your identity details are managed by an administrator.</p>
       </div>
     </div>
+
+    <div className="settings-form">
+      <label className="field-label">
+        Full name
+        <input className="text-input" value={name} readOnly />
+      </label>
+
+      <label className="field-label">
+        Email address
+        <input className="text-input" value={email} readOnly />
+      </label>
+
+      <label className="field-label">
+        Role
+        <input
+          className="text-input"
+          value={roleLabel(user?.role)}
+          readOnly
+        />
+      </label>
+    </div>
+  </section>
+
+  <section className="staff-section staff-create-section">
+    <div className="staff-section-heading">
+      <div>
+        <h3>Change password</h3>
+        <p>Enter your current password and choose a new one.</p>
+      </div>
+    </div>
+
+    {demoSession && (
+      <p className="auth-feedback auth-feedback-info" role="status">
+        Sign in with a saved account to change its password.
+      </p>
+    )}
+
+    <form className="settings-form" onSubmit={changeOwnPassword}>
+      <label className="field-label">
+        Current password
+        <input
+          className="text-input"
+          type="password"
+          value={currentPassword}
+          onChange={(event) => setCurrentPassword(event.target.value)}
+          required
+          autoComplete="current-password"
+          disabled={demoSession || passwordBusy}
+        />
+      </label>
+
+      <label className="field-label">
+        New password
+        <input
+          className="text-input"
+          type="password"
+          value={newPassword}
+          onChange={(event) => setNewPassword(event.target.value)}
+          required
+          minLength={12}
+          autoComplete="new-password"
+          disabled={demoSession || passwordBusy}
+        />
+      </label>
+
+      <label className="field-label">
+        Confirm new password
+        <input
+          className="text-input"
+          type="password"
+          value={passwordConfirmation}
+          onChange={(event) => setPasswordConfirmation(event.target.value)}
+          required
+          minLength={12}
+          autoComplete="new-password"
+          disabled={demoSession || passwordBusy}
+        />
+      </label>
+
+      {passwordMessage && (
+        <p
+          className={'auth-feedback auth-feedback-' + passwordMessage.type}
+          role={passwordMessage.type === 'error' ? 'alert' : 'status'}
+        >
+          {passwordMessage.text}
+        </p>
+      )}
+
+      <div className="settings-save-row">
+        <span>Passwords are private and never visible to administrators.</span>
+        <button
+          className="button button-primary"
+          disabled={demoSession || passwordBusy}
+        >
+          {passwordBusy ? 'Saving…' : 'Change password'}
+        </button>
+      </div>
+    </form>
+  </section>
+</div>
   ) : tab === 'Staff accounts' && isAdmin ? (
     <>
   <form className="settings-content" onSubmit={createStaffAccount}>
@@ -1632,6 +1757,14 @@ useEffect(() => {
                 </td>
                 <td>
                   <div className="staff-row-actions">
+                    <button
+                      type="button"
+                      className="button button-outline button-small"
+                      onClick={() => openStaffEdit(staff)}
+                      disabled={staffEditSaving || staffDeletingId === staff.id}
+                    >
+                      Edit
+                    </button>
                     <button
                       type="button"
                       className="button button-outline button-small"
@@ -1885,6 +2018,71 @@ useEffect(() => {
           </div>
         </Modal>
       )}
+      {staffEditTarget && (
+        <Modal
+          title="Edit staff details"
+          subtitle="Name and email are managed by an administrator."
+          onClose={() => {
+            if (!staffEditSaving) {
+              setStaffEditTarget(null)
+            }
+          }}
+        >
+          <form className="modal-form" onSubmit={saveStaffEdit}>
+            <label className="field-label">
+              Full name
+              <input
+                className="text-input"
+                value={staffEditName}
+                onChange={(event) => setStaffEditName(event.target.value)}
+                required
+                maxLength={120}
+              />
+            </label>
+
+            <label className="field-label">
+              Email address
+              <input
+                className="text-input"
+                type="email"
+                value={staffEditEmail}
+                onChange={(event) => setStaffEditEmail(event.target.value)}
+                required
+                maxLength={255}
+              />
+            </label>
+
+            <p className="auth-form-hint">
+              The new email becomes their login address. Confirm it with the staff
+              member before saving.
+            </p>
+
+            {staffEditError && (
+              <p className="auth-feedback auth-feedback-error" role="alert">
+                {staffEditError}
+              </p>
+            )}
+
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="button button-outline"
+                onClick={() => setStaffEditTarget(null)}
+                disabled={staffEditSaving}
+              >
+                Cancel
+              </button>
+
+              <button
+                className="button button-primary"
+                disabled={staffEditSaving}
+              >
+                {staffEditSaving ? 'Saving…' : 'Save changes'}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
       </>
   ) : tab === 'Password reset requests' && isAdmin ? (
     <PasswordResetRequestsPanel demoSession={demoSession} />
@@ -1949,7 +2147,7 @@ function Modal({ title, subtitle, onClose, children }) {
 function App() {
   const [session, setSession] = useState(() => {
     try {
-      const stored = JSON.parse(localStorage.getItem('fullstock_session') || 'null')
+      const stored = JSON.parse(sessionStorage.getItem('fullstock_session') || localStorage.getItem('fullstock_session') || 'null')
       const storedRole = stored?.user?.role?.toLowerCase()
       return !stored?.demo && ['admin', 'administrator', 'staff'].includes(storedRole) ? stored : null
     } catch { return null }
@@ -1987,12 +2185,21 @@ function App() {
     }
   }, [session?.token])
   const navigate = (destination) => {
-    if (session?.user?.role?.toLowerCase() === 'staff' && !['Products', 'Sales'].includes(destination)) return
+    if (session?.user?.role?.toLowerCase() === 'staff' && !['Products', 'Sales', 'Settings'].includes(destination)) return
     setActive(destination); setSearch(''); setMobileOpen(false)
   }
   const requestSignOut = () => setModal({ kind: 'logout' })
 
-  useEffect(() => { if (session) localStorage.setItem('fullstock_session', JSON.stringify(session)); else localStorage.removeItem('fullstock_session') }, [session])
+  useEffect(() => {
+    const key = 'fullstock_session'
+    localStorage.removeItem(key)
+    sessionStorage.removeItem(key)
+
+    if (session) {
+      const storage = session.rememberMe ? localStorage : sessionStorage
+      storage.setItem(key, JSON.stringify(session))
+    }
+  }, [session])
   useEffect(() => { setAssistantStore(loadAssistantStore(session)) }, [assistantOwner])
   useEffect(() => {
     if (!assistantOwner || assistantStore.owner !== assistantOwner) return undefined
@@ -2019,10 +2226,15 @@ function App() {
     return () => window.removeEventListener('focus', syncVisibleReports)
   }, [active, session?.token, refreshReportData])
 
-  const login = async (email, password) => {
+  const login = async (email, password, rememberMe = false) => {
     try {
       const result = await api.login(email, password)
-      setSession({ user: result.user, token: result.token, demo: false })
+      setSession({
+        user: result.user,
+        token: result.token,
+        demo: false,
+        rememberMe,
+      })
       if (result.user?.role?.toLowerCase() === 'staff') setActive('Products')
       notify('Signed in successfully.')
       return result
@@ -2168,7 +2380,7 @@ function App() {
   const isStaff = role === 'staff'
   const canManageWorkspace = role === 'admin' || role === 'administrator'
   const visibleNav = isStaff
-    ? nav.filter(({ label }) => ['Products', 'Sales'].includes(label))
+    ? nav.filter(({ label }) => ['Products', 'Sales', 'Settings'].includes(label))
     : nav
   const workspaceData = data
   const title = active
@@ -2187,7 +2399,7 @@ function App() {
     const activeChat = chats.find((chat) => chat.id === assistantStore.activeId) || chats[0]
     page = <AssistantPage data={data} conversations={chats} activeConversation={activeChat} onNewChat={createAssistantChat} onSelectChat={selectAssistantChat} onDeleteChat={deleteAssistantChat} onUpdateChat={updateAssistantChat} />
   }
-  else page = <SettingsPage user={session.user} onToast={notify} onCreateStaffAccount={createStaffAccount} demoSession={session.demo} />
+  else page = <SettingsPage user={session.user} onToast={notify} onCreateStaffAccount={createStaffAccount} demoSession={session.demo} onChangePassword={changeTemporaryPassword} />
 
   return <div className="app-shell"><Sidebar active={title} onNavigate={navigate} onSignOut={requestSignOut} mobileOpen={mobileOpen} closeMobile={() => setMobileOpen(false)} user={session.user} visibleNav={visibleNav} lowStockCount={data.products.filter((product) => Number(product.stock) <= Number(product.reorder_level)).length} /><div className="app-main"><Topbar search={search} setSearch={setSearch} openMenu={() => setMobileOpen(true)} user={session.user} onNavigate={navigate} onSignOut={requestSignOut} data={workspaceData} /><main className="page-content" key={title}>{page}</main><footer className="app-footer"><span>© 2026 FullStock</span><span>Inventory made clearer.</span></footer></div>
     {modal?.kind === 'entity' && <EntityModal type={modal.type} item={modal.item} suppliers={data.suppliers} products={data.products} onClose={() => setModal(null)} onNavigate={navigate} onSave={(values) => saveEntity(modal.type, modal.item, values)} />}

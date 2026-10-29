@@ -1,7 +1,20 @@
 const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api'
 
+function getStoredSession() {
+  try {
+    const stored =
+      sessionStorage.getItem('fullstock_session') ||
+      localStorage.getItem('fullstock_session') ||
+      'null'
+
+    return JSON.parse(stored)
+  } catch {
+    return null
+  }
+}
+
 async function request(path, options = {}) {
-  const session = JSON.parse(localStorage.getItem('fullstock_session') || 'null')
+  const session = getStoredSession()
   const headers = { Accept: 'application/json', 'Content-Type': 'application/json', ...(options.headers || {}) }
   if (session?.token) headers.Authorization = 'Bearer ' + session.token
   const response = await fetch(API_BASE + path, { ...options, headers })
@@ -14,7 +27,7 @@ async function request(path, options = {}) {
 }
 
 async function assistantRequest(question, conversation = [], onToken) {
-  const session = JSON.parse(localStorage.getItem('fullstock_session') || 'null')
+  const session = getStoredSession()
   const headers = {
     Accept: 'application/json, text/event-stream',
     'Content-Type': 'application/json',
@@ -84,11 +97,16 @@ export const api = {
   login: (email, password) => request('/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
   createStaffAccount: (data) => request('/staff-accounts', { method: 'POST', body: JSON.stringify(data) }),
   staffAccounts: () => request('/staff-accounts'),
-updateStaffAccountStatus: (id, isActive) =>
-  request(`/staff-accounts/${id}/status`, {
-    method: 'PATCH',
-    body: JSON.stringify({ is_active: isActive }),
-  }),
+  updateStaffAccount: (id, data) =>
+    request(`/staff-accounts/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+  updateStaffAccountStatus: (id, isActive) =>
+    request(`/staff-accounts/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ is_active: isActive }),
+    }),
   deleteStaffAccount: (id) =>
     request(`/staff-accounts/${id}`, { method: 'DELETE' }),
   forgotPassword: (email) => request('/forgot-password', { method: 'POST', body: JSON.stringify({ email }) }),
