@@ -505,7 +505,84 @@ function SalesPage({ sales, search, setSearch, onNewSale, onView, isStaff = fals
 }
 
 function SalesTable({ sales, compact = false, onView }) {
-  return <div className={'table-scroll ' + (compact ? 'compact-table' : '')}><table><thead><tr><th>SALE ID</th><th>DATE & TIME</th><th>ITEMS</th><th>TOTAL</th><th>STATUS</th>{!compact && <th className="th-actions">ACTIONS</th>}</tr></thead><tbody>{sales.map((sale) => <tr key={sale.id}><td className="cell-strong font-mono">#{sale.number || sale.id}</td><td>{dateTime(sale.date)}</td><td>{(sale.items || []).map((item) => item.product_name).join(', ') || '—'}</td><td className="cell-strong font-mono">{money(sale.total)}</td><td><span className="status-pill status-good"><i aria-hidden="true" />Completed</span></td>{!compact && <td><button className="icon-button table-view" aria-label={'View sale ' + (sale.number || sale.id)} onClick={() => onView?.(sale)}><Eye size={15} /></button></td>}</tr>)}</tbody></table>{sales.length === 0 && <EmptyState title={compact ? 'No sales yet' : 'No matching sales'} text={compact ? 'Record your first sale to see it listed here.' : 'Adjust the search or date/time filter to find a sale.'} />}</div>
+  return (
+    <div className={'table-scroll ' + (compact ? 'compact-table' : '')}>
+      <table>
+        <thead>
+          <tr>
+            <th>SALE ID</th>
+            <th>DATE &amp; TIME</th>
+            <th>ITEMS</th>
+            {!compact && <th>UNITS SOLD</th>}
+            <th>TOTAL</th>
+            <th>STATUS</th>
+            {!compact && <th className="th-actions">ACTIONS</th>}
+          </tr>
+        </thead>
+
+        <tbody>
+          {sales.map((sale) => {
+            const items = sale.items || []
+            const unitsSold = items.reduce(
+              (sum, item) => sum + Number(item.quantity || 0),
+              0
+            )
+
+            return (
+              <tr key={sale.id}>
+                <td className="cell-strong font-mono">
+                  #{sale.number || sale.id}
+                </td>
+                <td>{dateTime(sale.date)}</td>
+                <td>
+                  {items
+                    .map(
+                      (item) =>
+                        `${item.product_name} × ${Number(item.quantity || 0)}`
+                    )
+                    .join(', ') || '—'}
+                </td>
+                {!compact && (
+                  <td className="cell-strong font-mono">
+                    {number(unitsSold)}
+                  </td>
+                )}
+                <td className="cell-strong font-mono">{money(sale.total)}</td>
+                <td>
+                  <span className="status-pill status-good">
+                    <i aria-hidden="true" />
+                    Completed
+                  </span>
+                </td>
+                {!compact && (
+                  <td>
+                    <button
+                      className="icon-button table-view"
+                      aria-label={'View sale ' + (sale.number || sale.id)}
+                      onClick={() => onView?.(sale)}
+                    >
+                      <Eye size={15} />
+                    </button>
+                  </td>
+                )}
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+
+      {sales.length === 0 && (
+        <EmptyState
+          title={compact ? 'No sales yet' : 'No matching sales'}
+          text={
+            compact
+              ? 'Record your first sale to see it listed here.'
+              : 'Adjust the search or date/time filter to find a sale.'
+          }
+        />
+      )}
+    </div>
+  )
 }
 
 function InventoryPage({ products, movements, search, setSearch, onRestock }) {
