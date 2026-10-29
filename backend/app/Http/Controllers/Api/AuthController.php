@@ -82,9 +82,36 @@ class AuthController extends Controller
         $staff = User::query()
             ->whereRaw('LOWER(TRIM(role)) = ?', ['staff'])
             ->orderBy('name')
-            ->get(['id', 'name', 'email', 'created_at']);
+            ->get(['id', 'name', 'email', 'created_at', 'is_active']);
 
         return response()->json(['staff' => $staff]);
+    }
+
+    public function updateStaffAccountStatus(Request $request, User $staff)
+    {
+        if (strtolower(trim((string) $staff->role)) !== 'staff') {
+            return response()->json([
+                'message' => 'Only staff account status can be changed here.',
+            ], 404);
+        }
+
+        $request->validate([
+            'is_active' => ['required', 'boolean'],
+        ]);
+
+        $staff->is_active = $request->boolean('is_active');
+        $staff->save();
+
+        if (!$staff->is_active) {
+            $staff->tokens()->delete();
+        }
+
+        return response()->json([
+            'staff' => $staff->only(['id', 'name', 'email', 'created_at', 'is_active']),
+            'message' => $staff->is_active
+                ? 'Staff account reactivated.'
+                : 'Staff account deactivated.',
+        ]);
     }
 
     public function login(Request $request)
@@ -100,6 +127,12 @@ class AuthController extends Controller
             return response()->json([
                 'message' => 'These credentials do not match our records.',
             ], 422);
+        }
+
+        if (!$user->is_active) {
+            return response()->json([
+                'message' => 'This account is inactive. Contact an administrator.',
+            ], 403);
         }
 
         if (!in_array(strtolower(trim((string) $user->role)), ['admin', 'administrator', 'staff'], true)) {

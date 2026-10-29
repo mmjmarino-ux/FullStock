@@ -40,6 +40,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::post('/inventory/adjustments', [InventoryController::class, 'adjust']);
             Route::delete('/password-reset-requests/{passwordResetRequest}', [AuthController::class, 'deletePasswordResetRequest']);
             Route::get('/staff-accounts', [AuthController::class, 'staffAccounts']);
+            Route::patch('/staff-accounts/{staff}/status', [AuthController::class, 'updateStaffAccountStatus']);
         });
     });
 });

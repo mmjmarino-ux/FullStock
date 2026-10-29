@@ -1378,6 +1378,8 @@ function SettingsPage({ user, onToast, onCreateStaffAccount, demoSession }) {
   const [staffAccounts, setStaffAccounts] = useState([])
   const [staffListLoading, setStaffListLoading] = useState(false)
   const [staffListError, setStaffListError] = useState('')
+  const [staffDeletingId, setStaffDeletingId] = useState(null)
+  const [staffPendingDelete, setStaffPendingDelete] = useState(null)
   const isAdmin = ['admin', 'administrator'].includes(user?.role?.toLowerCase())
   const tabs = ['Profile', 'Business', 'Notifications', ...(isAdmin ? ['Staff accounts', 'Password reset requests'] : [])]
   const loadStaffAccounts = useCallback(async () => {
@@ -1399,6 +1401,35 @@ function SettingsPage({ user, onToast, onCreateStaffAccount, demoSession }) {
     setStaffListLoading(false)
   }
 }, [demoSession])
+
+const deleteStaffAccount = (staff) => {
+  setStaffPendingDelete(staff)
+}
+
+const confirmStaffStatusChange = async () => {
+  const staff = staffPendingDelete
+  if (!staff) return
+
+  const nextIsActive = !staff.is_active
+  setStaffDeletingId(staff.id)
+  setStaffListError('')
+
+  try {
+    await api.updateStaffAccountStatus(staff.id, nextIsActive)
+    setStaffAccounts((current) =>
+      current.map((account) =>
+        account.id === staff.id
+          ? { ...account, is_active: nextIsActive }
+          : account
+      )
+    )
+    setStaffPendingDelete(null)
+  } catch (error) {
+    setStaffListError(error.message || 'Could not update the staff account.')
+  } finally {
+    setStaffDeletingId(null)
+  }
+}
 
 useEffect(() => {
   if (tab === 'Staff accounts' && isAdmin) {
@@ -1500,6 +1531,7 @@ useEffect(() => {
       </div>
     </div>
   ) : tab === 'Staff accounts' && isAdmin ? (
+    <>
   <form className="settings-content" onSubmit={createStaffAccount}>
     <section className="staff-section">
       <div className="staff-section-heading">
@@ -1531,6 +1563,8 @@ useEffect(() => {
               <th>NAME</th>
               <th>EMAIL</th>
               <th>ACCOUNT CREATED</th>
+              <th>STATUS</th>
+              <th>ACTION</th>
             </tr>
           </thead>
 
@@ -1544,12 +1578,36 @@ useEffect(() => {
                     ? new Date(staff.created_at).toLocaleDateString()
                     : '—'}
                 </td>
+                <td>
+                  <span
+                    className={`status-pill ${
+                      staff.is_active ? 'status-good' : 'staff-status-inactive'
+                    }`}
+                  >
+                    <i aria-hidden="true" />
+                    {staff.is_active ? 'Active' : 'Inactive'}
+                  </span>
+                </td>
+                <td>
+                  <button
+                    type="button"
+                    className="button button-outline button-small"
+                    onClick={() => deleteStaffAccount(staff)}
+                    disabled={staffDeletingId === staff.id}
+                  >
+                    {staffDeletingId === staff.id
+                      ? 'Updating…'
+                      : staff.is_active
+                        ? 'Deactivate'
+                        : 'Reactivate'}
+                  </button>
+                </td>
               </tr>
             ))}
 
             {!staffListLoading && !staffListError && staffAccounts.length === 0 && (
               <tr>
-                <td colSpan={3}>
+                <td colSpan={5}>
                   {demoSession
                     ? 'Sign in with your administrator account to view saved staff accounts.'
                     : 'No staff accounts found.'}
@@ -1661,7 +1719,70 @@ useEffect(() => {
         </button>
       </div>
     </section>
-  </form>
+    </form>
+
+      {staffPendingDelete && (
+        <Modal
+          title={
+            staffPendingDelete.is_active
+              ? 'Deactivate staff account?'
+              : 'Reactivate staff account?'
+          }
+          subtitle={
+            staffPendingDelete.is_active
+              ? 'The staff member will lose access until reactivated.'
+              : 'The staff member will regain access to FullStock.'
+          }
+          onClose={() => {
+            if (staffDeletingId === null) {
+              setStaffPendingDelete(null)
+            }
+          }}
+        >
+          <p className="logout-confirm-copy">
+            {staffPendingDelete.is_active ? (
+              <>
+                Deactivate <strong>{staffPendingDelete.name}</strong> (
+                {staffPendingDelete.email})? They will no longer be able to sign in.
+              </>
+            ) : (
+              <>
+                Reactivate <strong>{staffPendingDelete.name}</strong> (
+                {staffPendingDelete.email})? They will be able to sign in again.
+              </>
+            )}
+          </p>
+
+          <div className="modal-actions">
+            <button
+              type="button"
+              className="button button-outline"
+              onClick={() => setStaffPendingDelete(null)}
+              disabled={staffDeletingId !== null}
+            >
+              Cancel
+            </button>
+
+            <button
+              type="button"
+              className={
+                staffPendingDelete.is_active
+                  ? 'button logout-confirm-button staff-status-confirm-button'
+                  : 'button button-primary staff-status-confirm-button'
+              }
+              onClick={confirmStaffStatusChange}
+              disabled={staffDeletingId === staffPendingDelete.id}
+            >
+              {staffDeletingId === staffPendingDelete.id
+                ? 'Updating…'
+                : staffPendingDelete.is_active
+                  ? 'Deactivate account'
+                  : 'Reactivate account'}
+            </button>
+          </div>
+        </Modal>
+      )}
+      </>
   ) : tab === 'Password reset requests' && isAdmin ? (
     <PasswordResetRequestsPanel demoSession={demoSession} />
   ) : (
