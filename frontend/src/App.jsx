@@ -1376,6 +1376,11 @@ function SettingsPage({ user, onToast, onCreateStaffAccount, demoSession }) {
   const [staffBusy, setStaffBusy] = useState(false)
   const [staffMessage, setStaffMessage] = useState(null)
   const [staffAccounts, setStaffAccounts] = useState([])
+  const [staffSearch, setStaffSearch] = useState('')
+  const filteredStaffAccounts = staffAccounts.filter((staff) => {
+    const searchText = staffSearch.trim().toLowerCase()
+    return `${staff.name} ${staff.email}`.toLowerCase().includes(searchText)
+  })
   const [staffListLoading, setStaffListLoading] = useState(false)
   const [staffListError, setStaffListError] = useState('')
   const [staffDeletingId, setStaffDeletingId] = useState(null)
@@ -1550,13 +1555,24 @@ useEffect(() => {
         </button>
       </div>
 
+      <div className="table-search staff-search">
+        <Search size={16} />
+        <input
+          type="search"
+          value={staffSearch}
+          onChange={(event) => setStaffSearch(event.target.value)}
+          placeholder="Search staff by name or email..."
+          aria-label="Search staff accounts"
+        />
+      </div>
+
       {staffListError && (
         <p className="auth-feedback auth-feedback-error" role="alert">
           {staffListError}
         </p>
       )}
 
-      <div className="table-scroll">
+      <div className="table-scroll staff-table-scroll">
         <table>
           <thead>
             <tr>
@@ -1569,7 +1585,7 @@ useEffect(() => {
           </thead>
 
           <tbody>
-            {staffAccounts.map((staff) => (
+            {filteredStaffAccounts.map((staff) => (
               <tr key={staff.id}>
                 <td className="cell-strong">{staff.name}</td>
                 <td>{staff.email}</td>
@@ -1605,15 +1621,19 @@ useEffect(() => {
               </tr>
             ))}
 
-            {!staffListLoading && !staffListError && staffAccounts.length === 0 && (
-              <tr>
-                <td colSpan={5}>
-                  {demoSession
-                    ? 'Sign in with your administrator account to view saved staff accounts.'
-                    : 'No staff accounts found.'}
-                </td>
-              </tr>
-            )}
+            {!staffListLoading &&
+              !staffListError &&
+              filteredStaffAccounts.length === 0 && (
+                <tr>
+                  <td colSpan={5}>
+                    {staffSearch.trim()
+                      ? 'No staff accounts match your search.'
+                      : demoSession
+                        ? 'Sign in with your administrator account to view saved staff accounts.'
+                        : 'No staff accounts found.'}
+                  </td>
+                </tr>
+              )}
           </tbody>
         </table>
       </div>

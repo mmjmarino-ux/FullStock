@@ -1460,3 +1460,19 @@ input[type="number"] { font-family: var(--font-mono); font-variant-numeric: tabu
   -webkit-text-fill-color: #fff;
   cursor: wait;
 }
+
+.staff-search {
+  width: min(420px, 100%);
+}
+
+.staff-table-scroll {
+  max-height: 320px;
+  overflow: auto;
+}
+
+.staff-table-scroll thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #f8fafc;
+}
