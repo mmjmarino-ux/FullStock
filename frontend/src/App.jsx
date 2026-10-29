@@ -539,7 +539,7 @@ function SalesTable({ sales, compact = false, onView }) {
                     {items
                       .map(
                         (item) =>
-                          `${item.product_name} × ${Number(item.quantity || 0)}`
+                          item.product_name
                       )
                       .join(', ') || '—'}
                   </div>
