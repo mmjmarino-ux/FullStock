@@ -41,6 +41,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::delete('/password-reset-requests/{passwordResetRequest}', [AuthController::class, 'deletePasswordResetRequest']);
             Route::get('/staff-accounts', [AuthController::class, 'staffAccounts']);
             Route::patch('/staff-accounts/{staff}/status', [AuthController::class, 'updateStaffAccountStatus']);
+            Route::delete('/staff-accounts/{staff}', [AuthController::class, 'deleteInactiveStaffAccount']);
         });
     });
 });

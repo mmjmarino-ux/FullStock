@@ -89,6 +89,8 @@ updateStaffAccountStatus: (id, isActive) =>
     method: 'PATCH',
     body: JSON.stringify({ is_active: isActive }),
   }),
+  deleteStaffAccount: (id) =>
+    request(`/staff-accounts/${id}`, { method: 'DELETE' }),
   forgotPassword: (email) => request('/forgot-password', { method: 'POST', body: JSON.stringify({ email }) }),
   submitPasswordResetRequest: (data) => request('/password-reset-requests', { method: 'POST', body: JSON.stringify(data)}),
   passwordResetRequests: () => request('/password-reset-requests'),

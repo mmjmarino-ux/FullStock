@@ -114,6 +114,28 @@ class AuthController extends Controller
         ]);
     }
 
+    public function deleteInactiveStaffAccount(User $staff)
+    {
+        if (strtolower(trim((string) $staff->role)) !== 'staff') {
+            return response()->json([
+                'message' => 'Only staff accounts can be deleted here.',
+            ], 404);
+        }
+
+        if ($staff->is_active) {
+            return response()->json([
+                'message' => 'Deactivate this staff account before deleting it.',
+            ], 409);
+        }
+
+        $staff->tokens()->delete();
+        $staff->delete();
+
+        return response()->json([
+            'message' => 'Inactive staff account permanently deleted.',
+        ]);
+    }
+
     public function login(Request $request)
     {
         $data = $request->validate([

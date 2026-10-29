@@ -1385,6 +1385,8 @@ function SettingsPage({ user, onToast, onCreateStaffAccount, demoSession }) {
   const [staffListError, setStaffListError] = useState('')
   const [staffDeletingId, setStaffDeletingId] = useState(null)
   const [staffPendingDelete, setStaffPendingDelete] = useState(null)
+  const [staffPendingPermanentDelete, setStaffPendingPermanentDelete] = useState(null)
+  const [staffPermanentDeleteId, setStaffPermanentDeleteId] = useState(null)
   const isAdmin = ['admin', 'administrator'].includes(user?.role?.toLowerCase())
   const tabs = ['Profile', 'Business', 'Notifications', ...(isAdmin ? ['Staff accounts', 'Password reset requests'] : [])]
   const loadStaffAccounts = useCallback(async () => {
@@ -1433,6 +1435,30 @@ const confirmStaffStatusChange = async () => {
     setStaffListError(error.message || 'Could not update the staff account.')
   } finally {
     setStaffDeletingId(null)
+  }
+}
+
+const requestStaffPermanentDelete = (staff) => {
+  setStaffPendingPermanentDelete(staff)
+}
+
+const confirmStaffPermanentDelete = async () => {
+  const staff = staffPendingPermanentDelete
+  if (!staff) return
+
+  setStaffPermanentDeleteId(staff.id)
+  setStaffListError('')
+
+  try {
+    await api.deleteStaffAccount(staff.id)
+    setStaffAccounts((current) =>
+      current.filter((account) => account.id !== staff.id)
+    )
+    setStaffPendingPermanentDelete(null)
+  } catch (error) {
+    setStaffListError(error.message || 'Could not delete the inactive account.')
+  } finally {
+    setStaffPermanentDeleteId(null)
   }
 }
 
@@ -1605,18 +1631,37 @@ useEffect(() => {
                   </span>
                 </td>
                 <td>
-                  <button
-                    type="button"
-                    className="button button-outline button-small"
-                    onClick={() => deleteStaffAccount(staff)}
-                    disabled={staffDeletingId === staff.id}
-                  >
-                    {staffDeletingId === staff.id
-                      ? 'Updating…'
-                      : staff.is_active
-                        ? 'Deactivate'
-                        : 'Reactivate'}
-                  </button>
+                  <div className="staff-row-actions">
+                    <button
+                      type="button"
+                      className="button button-outline button-small"
+                      onClick={() => deleteStaffAccount(staff)}
+                      disabled={
+                        staffDeletingId === staff.id ||
+                        staffPermanentDeleteId === staff.id
+                      }
+                    >
+                      {staffDeletingId === staff.id
+                        ? 'Updating…'
+                        : staff.is_active
+                          ? 'Deactivate'
+                          : 'Reactivate'}
+                    </button>
+
+                    {!staff.is_active && (
+                      <button
+                        type="button"
+                        className="button button-outline button-small staff-delete-account-button"
+                        onClick={() => requestStaffPermanentDelete(staff)}
+                        disabled={
+                          staffDeletingId === staff.id ||
+                          staffPermanentDeleteId === staff.id
+                        }
+                      >
+                        {staffPermanentDeleteId === staff.id ? 'Deleting…' : 'Delete'}
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -1798,6 +1843,44 @@ useEffect(() => {
                 : staffPendingDelete.is_active
                   ? 'Deactivate account'
                   : 'Reactivate account'}
+            </button>
+          </div>
+        </Modal>
+      )}
+      {staffPendingPermanentDelete && (
+        <Modal
+          title="Permanently delete staff account?"
+          subtitle="This action cannot be undone."
+          onClose={() => {
+            if (staffPermanentDeleteId === null) {
+              setStaffPendingPermanentDelete(null)
+            }
+          }}
+        >
+          <p className="logout-confirm-copy">
+            Permanently delete <strong>{staffPendingPermanentDelete.name}</strong>{' '}
+            ({staffPendingPermanentDelete.email})? This account cannot be restored.
+          </p>
+
+          <div className="modal-actions">
+            <button
+              type="button"
+              className="button button-outline"
+              onClick={() => setStaffPendingPermanentDelete(null)}
+              disabled={staffPermanentDeleteId !== null}
+            >
+              Cancel
+            </button>
+
+            <button
+              type="button"
+              className="button logout-confirm-button staff-status-confirm-button"
+              onClick={confirmStaffPermanentDelete}
+              disabled={staffPermanentDeleteId === staffPendingPermanentDelete.id}
+            >
+              {staffPermanentDeleteId === staffPendingPermanentDelete.id
+                ? 'Deleting…'
+                : 'Delete permanently'}
             </button>
           </div>
         </Modal>

@@ -1476,3 +1476,21 @@ input[type="number"] { font-family: var(--font-mono); font-variant-numeric: tabu
   z-index: 2;
   background: #f8fafc;
 }
+
+.staff-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.staff-delete-account-button {
+  color: #be123c;
+  border-color: #fecdd3;
+}
+
+.staff-delete-account-button:hover:not(:disabled) {
+  color: #be123c;
+  border-color: #fda4af;
+  background: #fff1f2;
+}
