@@ -1548,3 +1548,20 @@ input[type="number"] { font-family: var(--font-mono); font-variant-numeric: tabu
 button.sale-items-more {
   cursor: pointer;
 }
+
+.pos-quantity-input {
+  width: 42px;
+  height: 25px;
+  padding: 0 2px;
+  border: 0;
+  border-radius: 6px;
+  color: #334c40;
+  background: #fff;
+  font-size: 10px;
+  font-weight: 750;
+  text-align: center;
+}
+
+.pos-quantity-input:focus {
+  outline: 2px solid #cbd5e1;
+}

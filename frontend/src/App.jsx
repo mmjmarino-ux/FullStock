@@ -458,7 +458,22 @@ function StaffPosPage({ products, search, setSearch, onCheckout }) {
         <div className="pos-cart-heading"><div><span className="pos-cart-kicker">CURRENT SALE</span><h2>Order</h2></div><span className="pos-cart-count">{number(itemCount)} {itemCount === 1 ? 'item' : 'items'}</span></div>
         {lines.length ? <div className="pos-cart-lines">{lines.map(({ product, quantity, total: lineTotal }) => <div className="pos-cart-line" key={product.id}>
           <div className="pos-cart-line-main"><strong>{product.name}</strong><span>{money(product.price)} each</span><b>{money(lineTotal)}</b></div>
-          <div className="pos-quantity-control"><button aria-label={'Remove one ' + product.name} onClick={() => updateQuantity(product, quantity - 1)}>{quantity === 1 ? <Trash2 size={14} /> : <Minus size={14} />}</button><span>{quantity}</span><button aria-label={'Add one ' + product.name} disabled={quantity >= Number(product.stock)} onClick={() => updateQuantity(product, quantity + 1)}><Plus size={14} /></button></div>
+          <div className="pos-quantity-control"><button aria-label={'Remove one ' + product.name} onClick={() => updateQuantity(product, quantity - 1)}>{quantity === 1 ? <Trash2 size={14} /> : <Minus size={14} />}</button><input
+  className="pos-quantity-input"
+  type="number"
+  min="1"
+  max={Number(product.stock)}
+  step="1"
+  value={quantity}
+  aria-label={'Quantity of ' + product.name}
+  onChange={(event) => {
+    const nextQuantity = Number(event.target.value)
+
+    if (Number.isInteger(nextQuantity) && nextQuantity >= 1) {
+      updateQuantity(product, nextQuantity)
+    }
+  }}
+/><button aria-label={'Add one ' + product.name} disabled={quantity >= Number(product.stock)} onClick={() => updateQuantity(product, quantity + 1)}><Plus size={14} /></button></div>
         </div>)}</div> : <div className="pos-cart-empty"><span><ShoppingCart size={22} /></span><strong>Cart is ready</strong><p>Tap a product to add it to this sale.</p></div>}
         <div className="pos-cart-summary"><div><span>Items</span><strong>{number(itemCount)}</strong></div><div className="pos-total-row"><span>Total due</span><strong>{money(total)}</strong></div><p><Check size={13} /> Catalog prices are applied automatically.</p><button className="button button-primary pos-checkout-button" disabled={!lines.length || checkoutBusy} onClick={checkout}><ShoppingCart size={16} /> {checkoutBusy ? 'Saving sale…' : 'Complete sale'} <span>{money(total)}</span></button><button className="pos-clear-button" disabled={!lines.length || checkoutBusy} onClick={() => setCart([])}>Clear order</button></div>
       </aside>
@@ -787,7 +802,7 @@ function ReportsPage({ data, onRefresh, refreshing = false }) {
         <button onClick={() => { setExportFormat('pdf'); setExportOpen(false) }}><strong>Print / Save as PDF</strong><small>Use your browser’s print dialog</small></button>
       </div>}
     </div>} />
-    <div className="panel report-panel"><div className="report-tabs">{['Sales overview', 'Inventory report', 'Top products', 'Supplier performance'].map((tab) => <button key={tab} className={report === tab ? 'report-tab-active' : ''} aria-pressed={report === tab} onClick={() => setReport(tab)}>{tab}</button>)}</div><div className="report-date"><span><CalendarDays size={15} /> {periodLabel}</span><div className="report-date-actions"><label className="filter-select"><span className="sr-only">Report date range</span><select value={period} onChange={(event) => setPeriod(event.target.value)} aria-label="Report date range"><option>Last 7 days</option><option>Last 30 days</option><option>All time</option></select><ChevronDown size={13} /></label><button className="button button-outline button-small" onClick={onRefresh} disabled={refreshing}>{refreshing ? 'Refreshing…' : 'Generate report'}</button></div></div>
+    <div className="panel report-panel"><div className="report-tabs">{['Sales overview', 'Inventory report', 'Top products', 'Supplier performance'].map((tab) => <button key={tab} className={report === tab ? 'report-tab-active' : ''} aria-pressed={report === tab} onClick={() => setReport(tab)}>{tab}</button>)}</div><div className="report-date"><span><CalendarDays size={15} /> {periodLabel}</span><div className="report-date-actions"><label className="filter-select"><span className="sr-only">Report date range</span><select value={period} onChange={(event) => setPeriod(event.target.value)} aria-label="Report date range"><option>Last 7 days</option><option>Last 30 days</option><option>All time</option></select><ChevronDown size={13} /></label></div></div>
       {zeroValueSales.length > 0 && <p className="report-data-warning" role="status">{number(zeroValueSales.length)} {zeroValueSales.length === 1 ? 'sale has' : 'sales have'} a ₱0 total because the rice price was ₱0 when recorded. Set product prices before the next sale; past sale amounts cannot be inferred automatically.</p>}
       <div className="report-metrics"><div><span>Total sales · {period === 'All time' ? 'all time' : period.toLowerCase()}</span><strong>{money(salesTotal)}</strong></div><div><span>Transactions</span><strong>{number(sales.length)}</strong></div><div><span>Products tracked</span><strong>{number(products.length)}</strong></div><div><span>Low stock</span><strong className="report-low-value">{number(products.filter((product) => Number(product.stock) <= Number(product.reorder_level)).length)}</strong></div></div>
       <div className="report-content-grid"><section className="report-chart-card"><div className="panel-heading"><div><h2>{chart.title}</h2><p>{chart.subtitle}</p></div><span className="legend-dot">{chart.legend}</span></div>{chartHasData ? <div className="report-bars" role="img" aria-label={chart.title}>{chart.bars.map((bar, index) => <div className="report-bar-group" key={`${bar.label}-${index}`} title={`${bar.label}: ${bar.display}`}><span className="bar-value">{bar.display}</span><div className="report-bar-track"><i style={{ height: Math.max(12, Number(bar.value) / maxBarValue * 100) + '%' }} /></div><small>{bar.label}</small></div>)}</div> : <div className="report-empty-state" role="status">{chartEmptyMessage}</div>}</section>
