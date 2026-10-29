@@ -534,13 +534,15 @@ function SalesTable({ sales, compact = false, onView }) {
                   #{sale.number || sale.id}
                 </td>
                 <td>{dateTime(sale.date)}</td>
-                <td>
-                  {items
-                    .map(
-                      (item) =>
-                        `${item.product_name} × ${Number(item.quantity || 0)}`
-                    )
-                    .join(', ') || '—'}
+                <td className="sale-items-cell">
+                  <div className="sale-items-list">
+                    {items
+                      .map(
+                        (item) =>
+                          `${item.product_name} × ${Number(item.quantity || 0)}`
+                      )
+                      .join(', ') || '—'}
+                  </div>
                 </td>
                 {!compact && (
                   <td className="cell-strong font-mono">

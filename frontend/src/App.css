@@ -1494,3 +1494,15 @@ input[type="number"] { font-family: var(--font-mono); font-variant-numeric: tabu
   border-color: #fda4af;
   background: #fff1f2;
 }
+
+.sale-items-cell {
+  max-width: 360px;
+  white-space: normal;
+}
+
+.sale-items-list {
+  max-width: 360px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+}
