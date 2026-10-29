@@ -536,12 +536,29 @@ function SalesTable({ sales, compact = false, onView }) {
                 <td>{dateTime(sale.date)}</td>
                 <td className="sale-items-cell">
                   <div className="sale-items-list">
-                    {items
-                      .map(
-                        (item) =>
-                          item.product_name
-                      )
-                      .join(', ') || '—'}
+                    {items.slice(0, 3).map((item, index) => (
+                      <span
+                        className="sale-item-chip"
+                        key={`${sale.id}-${item.product_id ?? index}`}
+                      >
+                        {item.product_name}
+                      </span>
+                    ))}
+
+                    {items.length > 3 &&
+                      (onView ? (
+                        <button
+                          type="button"
+                          className="sale-items-more"
+                          onClick={() => onView(sale)}
+                        >
+                          +{items.length - 3} more
+                        </button>
+                      ) : (
+                        <span className="sale-items-more">
+                          +{items.length - 3} more
+                        </span>
+                      ))}
                   </div>
                 </td>
                 {!compact && (
