@@ -25,6 +25,7 @@ const sackQuantity = (kilograms) => number(Number(kilograms || 0) / KG_PER_SACK)
 const money = (amount) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', maximumFractionDigits: 0 }).format(Number(amount || 0))
 const number = (value) => new Intl.NumberFormat('en-PH').format(Number(value || 0))
 const shortDate = (value) => new Date(value).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+const expirationDateLabel = (value) => new Date(`${value}T00:00:00`).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
 const dateTime = (value) => new Date(value).toLocaleString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
 const dateTimeManila = (value) => new Date(value).toLocaleString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
 const dateInputValue = (date) => [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-')
@@ -243,7 +244,7 @@ function Topbar({ search, setSearch, openMenu, user, onNavigate, onLowStockProdu
   const isAdmin = userRole === 'admin' || userRole === 'administrator'
   const lowStockGroups = ['Short-Grain Rice', 'Medium-Grain Rice', 'Long-Grain Rice'].map((category) => ({
     category,
-    products: data.products.filter((product) => String(product.category || '').trim().toLowerCase() === category.toLowerCase() && Number(product.stock) <= Number(product.reorder_level)),
+    products: data.products.filter((product) => String(product.category || '').trim().toLowerCase() === category.toLowerCase() && Number(product.available_stock ?? product.stock) <= Number(product.reorder_level)),
   })).filter((group) => group.products.length > 0)
   const lowStockProductCount = lowStockGroups.reduce((total, group) => total + group.products.length, 0)
   useEffect(() => {
@@ -317,7 +318,7 @@ function Topbar({ search, setSearch, openMenu, user, onNavigate, onLowStockProdu
     <button className="icon-button notification-button" aria-label={notificationCount ? `Notifications, ${notificationCount} updates` : 'Notifications, no new updates'} aria-expanded={noticeOpen} aria-controls="stock-notifications" onClick={() => setNoticeOpen(!noticeOpen)}><Bell size={18} />{notificationCount > 0 && <span className="notification-count">{notificationCount > 99 ? '99+' : notificationCount}</span>}</button>
     {noticeOpen && <div className="notification-popover" id="stock-notifications" role="region" aria-label="Notifications"><div className="notification-popover-heading"><strong>Notifications</strong><span>{notificationCount} {notificationCount === 1 ? 'update' : 'updates'}</span></div>
       {isAdmin && voidApprovals.length > 0 && <section className="notification-category void-code-notifications"><h3>Void approval codes <span>{voidApprovals.length}</span></h3>{voidApprovals.map((approval) => <article className="void-approval-card" key={approval.id}><div className="void-approval-heading"><strong>Sale #{approval.sale_number}</strong><span>Expires {dateTimeManila(approval.expires_at)}</span></div><div className="void-approval-meta"><span>Requested by <strong>{approval.staff_name}</strong></span><span>Reason: {approval.reason}</span></div><div className="void-approval-code" aria-label={'One-time code ' + approval.code}>{approval.code}</div><p className="form-hint">Share only with this cashier. The code works once for this sale.</p></article>)}</section>}
-      {lowStockGroups.map((group) => <section className="notification-category" key={group.category}><h3>{group.category}</h3>{group.products.map((product) => { const stock = Number(product.stock); const isOut = stock <= 0; return <button className="notification-item" key={product.id} onClick={() => { onLowStockProduct(product); setNoticeOpen(false) }}><i className={'notification-status-dot ' + (isOut ? 'notification-status-out' : '')} /><span className="notification-item-copy"><strong>{product.name}</strong><small>{isOut ? 'Out of stock' : 'Low stock'} · {sackQuantity(stock)} sacks ({number(stock)} kg) left · reorder at {sackQuantity(product.reorder_level)} sacks</small></span><ArrowUpRight size={14} /></button>})}</section>)}
+      {lowStockGroups.map((group) => <section className="notification-category" key={group.category}><h3>{group.category}</h3>{group.products.map((product) => { const stock = Number(product.available_stock ?? product.stock); const isOut = stock <= 0; return <button className="notification-item" key={product.id} onClick={() => { onLowStockProduct(product); setNoticeOpen(false) }}><i className={'notification-status-dot ' + (isOut ? 'notification-status-out' : '')} /><span className="notification-item-copy"><strong>{product.name}</strong><small>{isOut ? 'No unexpired stock' : 'Low available stock'} · {sackQuantity(stock)} sacks ({number(stock)} kg) available · reorder at {sackQuantity(product.reorder_level)} sacks</small></span><ArrowUpRight size={14} /></button>})}</section>)}
       {!lowStockGroups.length && (!isAdmin || !voidApprovals.length) && <p className="notification-empty"><Check size={15} /> No new notifications.</p>}
     </div>}
     <div className="top-divider" />
@@ -355,7 +356,7 @@ function Dashboard({ data, user, onNavigate }) {
   const [datePickerOpen, setDatePickerOpen] = useState(false)
   const completedSales = data.sales.filter((sale) => sale.status !== 'Voided' && !sale.voided_at)
   const salesTotal = completedSales.reduce((sum, sale) => sum + Number(sale.total || 0), 0)
-  const lowStockProducts = data.products.filter((product) => Number(product.stock) <= Number(product.reorder_level))
+  const lowStockProducts = data.products.filter((product) => Number(product.available_stock ?? product.stock) <= Number(product.reorder_level))
   const lowStock = lowStockProducts.length
   const bestsellers = useMemo(() => {
     const sold = {}
@@ -388,7 +389,7 @@ function Dashboard({ data, user, onNavigate }) {
 }
 
 function StatusPill({ product }) {
-  const stock = Number(product.stock)
+  const stock = Number(product.available_stock ?? product.stock)
   const outOfStock = stock <= 0
   const low = stock <= Number(product.reorder_level)
   const statusClass = outOfStock ? 'status-out' : low ? 'status-low' : 'status-good'
@@ -410,7 +411,7 @@ function ProductPage({ products, search, setSearch, onAdd, onManageStock, onEdit
   const shown = products.filter((item) => {
     const matches = `${item.name} ${item.id} ${item.category}`.toLowerCase().includes(search.toLowerCase())
     const byCategory = category === 'All categories' || item.category === category
-    const low = Number(item.stock) <= Number(item.reorder_level)
+    const low = Number(item.available_stock ?? item.stock) <= Number(item.reorder_level)
     const byStatus = status === 'All status' || (status === 'Low stock' ? low : !low)
     return matches && byCategory && byStatus
   })
@@ -421,9 +422,9 @@ function ProductPage({ products, search, setSearch, onAdd, onManageStock, onEdit
     try { await onToggleBestSeller(product) } finally { setBestSellerBusy(null) }
   }
   return <>
-    <SectionHeading eyebrow="RICE CATALOG" title="Products" subtitle={canManage ? 'Manage your rice varieties. Set actual prices and stock before recording sales.' : 'Browse rice varieties and check current availability.'} action={canManage && <button className="button button-primary" onClick={onAdd}><Plus size={16} /> Add product</button>} />
+    <SectionHeading eyebrow="RICE CATALOG" title="Products" subtitle={canManage ? 'Manage rice varieties, prices, and reorder levels. Receive stock as batches in Inventory.' : 'Browse rice varieties and check current availability.'} action={canManage && <button className="button button-primary" onClick={onAdd}><Plus size={16} /> Add product</button>} />
     <div className="panel table-panel"><div className="table-toolbar"><div className="table-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search products..." /></div><div className="toolbar-filters"><label className="filter-select"><Filter size={14} /><select value={category} onChange={(event) => setCategory(event.target.value)}>{categories.map((value) => <option key={value}>{value}</option>)}</select><ChevronDown size={13} /></label><label className="filter-select"><select value={status} onChange={(event) => setStatus(event.target.value)}><option>All status</option><option>In stock</option><option>Low stock</option></select><ChevronDown size={13} /></label></div></div>
-      <div className="table-scroll"><table><thead><tr><th className="th-product-id">PRODUCT ID</th><th>PRODUCT</th><th>CATEGORY</th><th>PRICE / KG</th><th>STOCK (50 KG SACKS)</th><th>STATUS</th>{canManage && <th className="th-actions">ACTIONS</th>}</tr></thead><tbody>{pages.rows.map((product) => <tr key={product.id}><td className="product-id-cell cell-strong font-mono">{product.id}</td><td><div className="table-product"><span className="table-product-thumb"><Package size={16} /></span><div><strong>{product.name}{canManage ? <button type="button" className={'best-seller-table-toggle' + (product.is_best_seller ? ' is-active' : '')} onClick={() => toggleBestSeller(product)} disabled={bestSellerBusy !== null} aria-label={(product.is_best_seller ? 'Remove ' : 'Mark ') + product.name + ' as best seller'} aria-pressed={Boolean(product.is_best_seller)} title={product.is_best_seller ? 'Best seller: click to remove' : 'Click to mark as best seller'}><Wheat size={16} /></button> : product.is_best_seller && <Wheat className="best-seller-icon" size={15} aria-label="Best seller" title="Best seller" />}</strong></div></div></td><td>{product.category}</td><td className="cell-strong font-mono">{money(product.price)}</td><td className="cell-strong font-mono">{sackQuantity(product.stock)} <span className="muted-text">sacks ({number(product.stock)} kg)</span></td><td><StatusPill product={product} /></td>{canManage && <td><TableActions label={product.name} onEdit={() => onEdit(product)} onDelete={() => onDelete(product)} /></td>}</tr>)}</tbody></table></div>
+      <div className="table-scroll"><table><thead><tr><th className="th-product-id">PRODUCT ID</th><th>PRODUCT</th><th>CATEGORY</th><th>PRICE / KG</th><th>AVAILABLE STOCK</th><th>STATUS</th>{canManage && <th className="th-actions">ACTIONS</th>}</tr></thead><tbody>{pages.rows.map((product) => { const availableStock = Number(product.available_stock ?? product.stock); return <tr key={product.id}><td className="product-id-cell cell-strong font-mono">{product.id}</td><td><div className="table-product"><span className="table-product-thumb"><Package size={16} /></span><div><strong>{product.name}{canManage ? <button type="button" className={'best-seller-table-toggle' + (product.is_best_seller ? ' is-active' : '')} onClick={() => toggleBestSeller(product)} disabled={bestSellerBusy !== null} aria-label={(product.is_best_seller ? 'Remove ' : 'Mark ') + product.name + ' as best seller'} aria-pressed={Boolean(product.is_best_seller)} title={product.is_best_seller ? 'Best seller: click to remove' : 'Click to mark as best seller'}><Wheat size={16} /></button> : product.is_best_seller && <Wheat className="best-seller-icon" size={15} aria-label="Best seller" title="Best seller" />}</strong></div></div></td><td>{product.category}</td><td className="cell-strong font-mono">{money(product.price)}</td><td className="cell-strong font-mono">{sackQuantity(availableStock)} <span className="muted-text">sacks ({number(availableStock)} kg)</span></td><td><StatusPill product={product} /></td>{canManage && <td><TableActions label={product.name} onEdit={() => onEdit(product)} onDelete={() => onDelete(product)} /></td>}</tr> })}</tbody></table></div>
       {shown.length === 0 && <EmptyState title="No products found" text="Try a different search or add a product to your catalog." />}
       <TableFooter count={shown.length} total={products.length} page={pages.page} pages={pages.pages} onPage={setPage} />
     </div>
@@ -455,14 +456,14 @@ function StaffPosPage({ products, search, setSearch, onCheckout }) {
     const saleUnit = kgPerUnit === 1 ? 'kg' : `bag_${kgPerUnit}kg`
     const found = current.find((line) => String(line.productId) === String(product.id) && line.kgPerUnit === kgPerUnit)
     const otherReservedKg = current.filter((line) => String(line.productId) === String(product.id) && line.kgPerUnit !== kgPerUnit).reduce((sum, line) => sum + line.count * line.kgPerUnit, 0)
-    if (found) return current.map((line) => String(line.productId) === String(product.id) && line.kgPerUnit === kgPerUnit ? { ...line, count: Math.min(Math.floor((Number(product.stock) - otherReservedKg) / kgPerUnit), line.count + 1) } : line)
-    if (Number(product.stock) - otherReservedKg < kgPerUnit) return current
+    if (found) return current.map((line) => String(line.productId) === String(product.id) && line.kgPerUnit === kgPerUnit ? { ...line, count: Math.min(Math.floor((Number(product.available_stock ?? product.stock) - otherReservedKg) / kgPerUnit), line.count + 1) } : line)
+    if (Number(product.available_stock ?? product.stock) - otherReservedKg < kgPerUnit) return current
     return [...current, { productId: product.id, count: 1, kgPerUnit, saleUnit }]
   })
   const updateCount = (product, kgPerUnit, count) => setCart((current) => {
     if (count <= 0) return current.filter((line) => !(String(line.productId) === String(product.id) && line.kgPerUnit === kgPerUnit))
     const otherReservedKg = current.filter((line) => String(line.productId) === String(product.id) && line.kgPerUnit !== kgPerUnit).reduce((sum, line) => sum + line.count * line.kgPerUnit, 0)
-    return current.map((line) => String(line.productId) === String(product.id) && line.kgPerUnit === kgPerUnit ? { ...line, count: Math.min(Math.floor((Number(product.stock) - otherReservedKg) / kgPerUnit), count) } : line)
+    return current.map((line) => String(line.productId) === String(product.id) && line.kgPerUnit === kgPerUnit ? { ...line, count: Math.min(Math.floor((Number(product.available_stock ?? product.stock) - otherReservedKg) / kgPerUnit), count) } : line)
   })
   const checkout = () => {
     if (checkoutBusy || !lines.length) return
@@ -495,7 +496,7 @@ function StaffPosPage({ products, search, setSearch, onCheckout }) {
         </div>
         <div className="pos-categories" aria-label="Filter rice products">{categories.map((value) => <button key={value} className={category === value ? 'pos-category-active' : ''} aria-pressed={category === value} onClick={() => setCategory(value)}>{value === 'Best sellers' && <Wheat size={13} aria-hidden="true" />}{value}</button>)}</div>
         {shown.length ? <div className="pos-product-grid">{shown.map((product) => {
-          const stock = Number(product.stock)
+          const stock = Number(product.available_stock ?? product.stock)
           const reservedKg = cart.filter((line) => String(line.productId) === String(product.id)).reduce((sum, line) => sum + line.count * line.kgPerUnit, 0)
           const remainingKg = stock - reservedKg
           const canAdd = remainingKg >= 1 && Number(product.price) > 0
@@ -516,7 +517,7 @@ function StaffPosPage({ products, search, setSearch, onCheckout }) {
   className="pos-quantity-input"
   type="number"
   min="1"
-  max={Math.floor((Number(product.stock) - cart.filter((line) => String(line.productId) === String(product.id) && line.kgPerUnit !== kgPerUnit).reduce((sum, line) => sum + line.count * line.kgPerUnit, 0)) / kgPerUnit)}
+  max={Math.floor((Number(product.available_stock ?? product.stock) - cart.filter((line) => String(line.productId) === String(product.id) && line.kgPerUnit !== kgPerUnit).reduce((sum, line) => sum + line.count * line.kgPerUnit, 0)) / kgPerUnit)}
   step="1"
   value={count}
   aria-label={'Number of ' + (kgPerUnit === 1 ? 'kilograms' : `${kgPerUnit} kilogram bags`) + ' of ' + product.name}
@@ -527,7 +528,7 @@ function StaffPosPage({ products, search, setSearch, onCheckout }) {
       updateCount(product, kgPerUnit, nextQuantity)
     }
   }}
-/><button aria-label={'Add one ' + (kgPerUnit === 1 ? 'kilogram' : `${kgPerUnit} kilogram bag`) + ' of ' + product.name} disabled={(count + 1) * kgPerUnit + cart.filter((line) => String(line.productId) === String(product.id) && line.kgPerUnit !== kgPerUnit).reduce((sum, line) => sum + line.count * line.kgPerUnit, 0) > Number(product.stock)} onClick={() => updateCount(product, kgPerUnit, count + 1)}><Plus size={14} /></button></div>
+/><button aria-label={'Add one ' + (kgPerUnit === 1 ? 'kilogram' : `${kgPerUnit} kilogram bag`) + ' of ' + product.name} disabled={(count + 1) * kgPerUnit + cart.filter((line) => String(line.productId) === String(product.id) && line.kgPerUnit !== kgPerUnit).reduce((sum, line) => sum + line.count * line.kgPerUnit, 0) > Number(product.available_stock ?? product.stock)} onClick={() => updateCount(product, kgPerUnit, count + 1)}><Plus size={14} /></button></div>
         </div>)}</div> : <div className="pos-cart-empty"><span><ShoppingCart size={22} /></span><strong>Cart is ready</strong><p>Tap a product to add it to this sale.</p></div>}
         <div className="pos-cart-summary"><div><span>Items</span><strong>{number(itemCount)}</strong></div><div className="pos-total-row"><span>Total due</span><strong>{money(total)}</strong></div><p><Check size={13} /> Catalog prices are applied automatically.</p><button className="button button-primary pos-checkout-button" disabled={!lines.length || checkoutBusy} onClick={checkout}><ShoppingCart size={16} /> {checkoutBusy ? 'Saving sale…' : 'Complete sale'} <span>{money(total)}</span></button><button className="pos-clear-button" disabled={!lines.length || checkoutBusy} onClick={() => setCart([])}>Clear order</button></div>
       </aside>
@@ -689,17 +690,68 @@ function SalesTable({ sales, compact = false, onView }) {
   )
 }
 
-function InventoryPage({ products, movements, search, setSearch, onRestock }) {
+function InventoryPage({ products, batches = [], movements, search, setSearch, onAddBatch, onEditBatch }) {
   const [category, setCategory] = useState('All categories')
   const [page, setPage] = useState(1)
+  const [batchView, setBatchView] = useState('current')
+  const [historyStatus, setHistoryStatus] = useState('All history')
   const [showAllMovements, setShowAllMovements] = useState(false)
-  useEffect(() => setPage(1), [search, category])
+  useEffect(() => setPage(1), [search, category, batchView, historyStatus])
   const categories = [...new Set(products.map((product) => product.category).filter(Boolean))]
-  const filtered = products.filter((product) => `${product.name} ${product.id} ${product.category || ''}`.toLowerCase().includes(search.toLowerCase()) && (category === 'All categories' || product.category === category))
-  const pages = paginate(filtered, page)
+  const today = dateInputValue(new Date())
+  const eligibleProducts = products.filter((product) => category === 'All categories' || product.category === category)
+  const batchRows = eligibleProducts.flatMap((product) => {
+    const productBatches = batches.filter((batch) => String(batch.product_id) === String(product.id))
+    const matchesSearch = (batch) => `${product.name} ${product.id} ${product.category || ''} ${batch?.batch_code || ''} ${batch?.note || ''}`.toLowerCase().includes(search.toLowerCase())
+    const isExpired = (batch) => Boolean(batch.expiration_date && batch.expiration_date < today)
+    const isDepleted = (batch) => Number(batch.remaining_quantity) <= 0
+
+    if (batchView === 'history') {
+      return productBatches
+        .filter((batch) => historyStatus === 'Expired' ? isExpired(batch) : historyStatus === 'Depleted' ? isDepleted(batch) : isExpired(batch) || isDepleted(batch))
+        .filter(matchesSearch)
+        .map((batch) => ({ product, batch }))
+    }
+
+    const currentBatches = productBatches.filter((batch) => !isDepleted(batch) && !isExpired(batch)).filter(matchesSearch)
+    if (currentBatches.length) return currentBatches.map((batch) => ({ product, batch }))
+    const productMatchesSearch = `${product.name} ${product.id} ${product.category || ''}`.toLowerCase().includes(search.toLowerCase())
+    return productMatchesSearch ? [{ product, batch: null }] : []
+  })
+  const pages = paginate(batchRows, page)
   return <>
-    <SectionHeading eyebrow="STOCK CONTROL" title="Inventory" subtitle="Track stock in 50 kg sack equivalents and restock by sack." action={<button className="button button-outline" onClick={() => document.getElementById('movement-log')?.scrollIntoView({ behavior: 'smooth' })}><History size={15} /> View history</button>} />
-    <div className="panel table-panel"><div className="table-toolbar"><div className="table-search"><Search size={16} /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} placeholder="Search products..." /></div><div className="toolbar-filters"><label className="filter-select"><select value={category} onChange={(event) => { setCategory(event.target.value); setPage(1) }}><option>All categories</option>{categories.map((value) => <option key={value}>{value}</option>)}</select><ChevronDown size={13} /></label></div></div><div className="table-scroll"><table><thead><tr><th>PRODUCT</th><th>CURRENT STOCK (SACKS)</th><th>REORDER LEVEL (SACKS)</th><th>STATUS</th><th className="th-actions">ACTION</th></tr></thead><tbody>{pages.rows.map((product) => <tr key={product.id}><td><div className="table-product"><span className="table-product-thumb"><Package size={16} /></span><div><strong>{product.name}</strong><small>{product.category}</small></div></div></td><td className="cell-strong font-mono">{sackQuantity(product.stock)} <span className="muted-text">sacks ({number(product.stock)} kg)</span></td><td className="font-mono">{sackQuantity(product.reorder_level)} sacks</td><td><StatusPill product={product} /></td><td><button className="button button-soft button-small" onClick={() => onRestock(product)}><Plus size={13} /> Add stock</button></td></tr>)}</tbody></table></div>{filtered.length === 0 && <EmptyState title="No inventory found" text="Try a different search or category." />}<TableFooter count={filtered.length} total={products.length} page={pages.page} pages={pages.pages} onPage={setPage} /></div>
+    <SectionHeading eyebrow="STOCK CONTROL" title="Inventory" subtitle="Track each batch by expiration date. Sales use the soonest-expiring eligible stock first." action={<div className="settings-save-row"><button className="button button-primary" onClick={onAddBatch}><Plus size={15} /> Add batch</button><button className="button button-outline" onClick={() => document.getElementById('movement-log')?.scrollIntoView({ behavior: 'smooth' })}><History size={15} /> View history</button></div>} />
+    <div className="panel table-panel">
+      <div className="settings-tabs" role="tablist" aria-label="Inventory batch views">
+        <button type="button" role="tab" aria-selected={batchView === 'current'} className={batchView === 'current' ? 'settings-tab-active' : ''} onClick={() => setBatchView('current')}>Current stock</button>
+        <button type="button" role="tab" aria-selected={batchView === 'history'} className={batchView === 'history' ? 'settings-tab-active' : ''} onClick={() => setBatchView('history')}>Batch history</button>
+      </div>
+      <div className="table-toolbar">
+        <div className="table-search"><Search size={16} /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} placeholder={batchView === 'history' ? 'Search products or batches...' : 'Search products...'} /></div>
+        <div className="toolbar-filters">
+          <label className="filter-select"><select value={category} onChange={(event) => { setCategory(event.target.value); setPage(1) }}><option>All categories</option>{categories.map((value) => <option key={value}>{value}</option>)}</select><ChevronDown size={13} /></label>
+          {batchView === 'history' && <label className="filter-select"><select value={historyStatus} onChange={(event) => { setHistoryStatus(event.target.value); setPage(1) }}><option>All history</option><option>Expired</option><option>Depleted</option></select><ChevronDown size={13} /></label>}
+        </div>
+      </div>
+      <div className="table-scroll"><table><thead><tr><th>PRODUCT</th><th>BATCH</th><th>EXPIRATION DATE</th><th>REMAINING</th><th>STATUS</th><th className="th-actions">ACTION</th></tr></thead><tbody>
+        {pages.rows.map(({ product, batch }) => {
+          const expired = Boolean(batch?.expiration_date && batch.expiration_date < today)
+          const remaining = Number(batch?.remaining_quantity || 0)
+          const hasBatches = batches.some((value) => String(value.product_id) === String(product.id))
+          const badge = !batch ? (hasBatches ? 'Out of stock' : 'No batches') : remaining <= 0 ? 'Depleted' : expired ? 'Expired' : 'Available'
+          return <tr key={`${product.id}-${batch?.id || 'empty'}`}>
+            <td><div className="table-product"><span className="table-product-thumb"><Package size={16} /></span><div><strong>{product.name}</strong><small>{product.category} · {sackQuantity(product.stock)} sacks ({number(product.stock)} kg) on hand</small></div></div></td>
+            <td className="cell-strong font-mono">{batch?.batch_code || '—'}</td>
+            <td>{batch?.expiration_date ? expirationDateLabel(batch.expiration_date) : batch ? 'No expiry recorded' : '—'}</td>
+            <td className="cell-strong font-mono">{batch ? `${number(remaining)} kg` : '—'}</td>
+            <td><span className={'status-pill ' + (!batch || remaining <= 0 || expired ? 'status-low' : 'status-good')}><i aria-hidden="true" />{badge}</span></td>
+            <td>{batch && <button className="button button-outline button-small" onClick={() => onEditBatch(batch)}>Edit batch</button>}</td>
+          </tr>
+        })}
+      </tbody></table></div>
+      {batchRows.length === 0 && <EmptyState title={batchView === 'history' ? 'No batch history found' : 'No inventory found'} text={batchView === 'history' ? 'Expired or depleted batches matching these filters will appear here.' : 'Try a different search or category.'} />}
+      <TableFooter count={batchRows.length} total={batchRows.length} page={pages.page} pages={pages.pages} onPage={setPage} />
+    </div>
     <section className="panel movement-panel" id="movement-log"><div className="panel-heading"><div><h2>Stock movements</h2><p>Sales and inventory adjustments</p></div><button className="text-button" onClick={() => setShowAllMovements(!showAllMovements)}>{showAllMovements ? 'Show recent' : 'View all'} <ArrowUpRight size={14} /></button></div><MovementTable movements={showAllMovements ? movements : movements.slice(0, 5)} /></section>
   </>
 }
@@ -722,7 +774,7 @@ function EntityPage({ items, search, setSearch, onAdd, onEdit, onDelete }) {
 
 function HelpPage({ onNavigate }) {
   const guides = [
-    { title: 'Update inventory', text: 'Open Inventory, choose a product, then record the quantity received and a reference note.', page: 'Inventory', icon: PackagePlus },
+    { title: 'Receive an inventory batch', text: 'Open Inventory, add a batch for the product, and record its quantity and expiration date.', page: 'Inventory', icon: PackagePlus },
     { title: 'Record a sale', text: 'Open Sales and choose New sale. The sale total and stock deduction are recorded together.', page: 'Sales', icon: ShoppingCart },
     { title: 'Manage products', text: 'Open Products to search the catalog, update item details, or add a new product.', page: 'Products', icon: Package },
   ]
@@ -841,7 +893,7 @@ function ReportsPage({ data, onRefresh, refreshing = false }) {
     ['Total sales', money(salesTotal)],
     ['Transactions', number(sales.length)],
     ['Products tracked', number(products.length)],
-    ['Low stock products', number(products.filter((product) => Number(product.stock) <= Number(product.reorder_level)).length)],
+    ['Low stock products', number(products.filter((product) => Number(product.available_stock ?? product.stock) <= Number(product.reorder_level)).length)],
     ['Out of stock products', number(products.filter((product) => Number(product.stock) <= 0).length)],
     ['50 kg sacks on hand', sackQuantity(products.reduce((sum, product) => sum + Number(product.stock || 0), 0))],
     ['Estimated inventory value', money(products.reduce((sum, product) => sum + Number(product.stock || 0) * Number(product.price || 0), 0))],
@@ -874,7 +926,7 @@ function ReportsPage({ data, onRefresh, refreshing = false }) {
     </div>} />
     <div className="panel report-panel"><div className="report-tabs">{['Sales overview', 'Inventory report', 'Top products', 'Supplier performance'].map((tab) => <button key={tab} className={report === tab ? 'report-tab-active' : ''} aria-pressed={report === tab} onClick={() => setReport(tab)}>{tab}</button>)}</div><div className="report-date"><span><CalendarDays size={15} /> {periodLabel}</span><div className="report-date-actions"><label className="filter-select"><span className="sr-only">Report date range</span><select value={period} onChange={(event) => setPeriod(event.target.value)} aria-label="Report date range"><option>Last 7 days</option><option>Last 30 days</option><option>All time</option></select><ChevronDown size={13} /></label></div></div>
       {zeroValueSales.length > 0 && <p className="report-data-warning" role="status">{number(zeroValueSales.length)} {zeroValueSales.length === 1 ? 'sale has' : 'sales have'} a ₱0 total because the rice price was ₱0 when recorded. Set product prices before the next sale; past sale amounts cannot be inferred automatically.</p>}
-      <div className="report-metrics"><div><span>Total sales · {period === 'All time' ? 'all time' : period.toLowerCase()}</span><strong>{money(salesTotal)}</strong></div><div><span>Transactions</span><strong>{number(sales.length)}</strong></div><div><span>Products tracked</span><strong>{number(products.length)}</strong></div><div><span>Low stock</span><strong className="report-low-value">{number(products.filter((product) => Number(product.stock) <= Number(product.reorder_level)).length)}</strong></div></div>
+      <div className="report-metrics"><div><span>Total sales · {period === 'All time' ? 'all time' : period.toLowerCase()}</span><strong>{money(salesTotal)}</strong></div><div><span>Transactions</span><strong>{number(sales.length)}</strong></div><div><span>Products tracked</span><strong>{number(products.length)}</strong></div><div><span>Low stock</span><strong className="report-low-value">{number(products.filter((product) => Number(product.available_stock ?? product.stock) <= Number(product.reorder_level)).length)}</strong></div></div>
       <div className="report-content-grid"><section className="report-chart-card"><div className="panel-heading"><div><h2>{chart.title}</h2><p>{chart.subtitle}</p></div><span className="legend-dot">{chart.legend}</span></div>{chartHasData ? <div className="report-bars" role="img" aria-label={chart.title}>{chart.bars.map((bar, index) => <div className="report-bar-group" key={`${bar.label}-${index}`} title={`${bar.label}: ${bar.display}`}><span className="bar-value">{bar.display}</span><div className="report-bar-track"><i style={{ height: Math.max(12, Number(bar.value) / maxBarValue * 100) + '%' }} /></div><small>{bar.label}</small></div>)}</div> : <div className="report-empty-state" role="status">{chartEmptyMessage}</div>}</section>
         <section className="report-chart-card category-report"><div className="panel-heading"><div><h2>Stock by category</h2><p>Current 50 kg sack equivalents</p></div></div><div className="category-chart-wrap"><div className="category-donut" style={{ background: categoryGradient }}><div><strong>{sackQuantity(products.reduce((sum, product) => sum + Number(product.stock || 0), 0))}</strong><span>sacks</span></div></div><div className="category-legend">{categoryCounts.map(([name, amount], index) => <div key={name}><i className="legend-swatch" style={{ background: categoryColors[index % categoryColors.length] }} /><span>{name}</span><strong>{number(amount)}</strong></div>)}</div></div></section></div>
     </div>
@@ -1027,8 +1079,8 @@ function exportReportsToExcel(data, summaryOnly = false) {
   const sales = (data.sales || []).filter((sale) => sale.status !== 'Voided' && !sale.voided_at)
   const suppliers = data.suppliers || []
   const movements = data.movements || []
-  const lowStock = products.filter((product) => Number(product.stock) <= Number(product.reorder_level))
-  const outOfStock = products.filter((product) => Number(product.stock) <= 0)
+  const lowStock = products.filter((product) => Number(product.available_stock ?? product.stock) <= Number(product.reorder_level))
+  const outOfStock = products.filter((product) => Number(product.available_stock ?? product.stock) <= 0)
   const totalUnits = products.reduce((sum, product) => sum + Number(product.stock || 0), 0) / KG_PER_SACK
   const stockValue = products.reduce((sum, product) => sum + Number(product.stock || 0) * Number(product.price || 0), 0)
   const totalSales = sales.reduce((sum, sale) => sum + Number(sale.total || 0), 0)
@@ -1055,7 +1107,7 @@ function exportReportsToExcel(data, summaryOnly = false) {
     current.products += 1
     current.units += Number(product.stock || 0)
     current.value += Number(product.stock || 0) * Number(product.price || 0)
-    if (Number(product.stock) <= Number(product.reorder_level)) current.lowStock += 1
+    if (Number(product.available_stock ?? product.stock) <= Number(product.reorder_level)) current.lowStock += 1
     categoryStats.set(name, current)
   })
 
@@ -1132,7 +1184,7 @@ function exportReportsToExcel(data, summaryOnly = false) {
   const file = new Blob([workbook], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
   const url = URL.createObjectURL(file)
   const link = document.createElement('a')
-  const date = new Date().toISOString().slice(0, 10)
+  const date = dateInputValue(new Date())
   link.href = url
   link.download = `fullstock-report${summaryOnly ? '-summary' : ''}-${date}.xlsx`
   document.body.appendChild(link)
@@ -1152,7 +1204,7 @@ function exportReportSummaryCsv(data) {
     ['Total sales', sales.reduce((sum, sale) => sum + Number(sale.total || 0), 0)],
     ['Transactions', sales.length],
     ['Products tracked', products.length],
-    ['Low stock products', products.filter((product) => Number(product.stock) <= Number(product.reorder_level)).length],
+    ['Low stock products', products.filter((product) => Number(product.available_stock ?? product.stock) <= Number(product.reorder_level)).length],
     ['Out of stock products', products.filter((product) => Number(product.stock) <= 0).length],
     ['50 kg sacks on hand', sackQuantity(products.reduce((sum, product) => sum + Number(product.stock || 0), 0))],
     ['Estimated inventory value', products.reduce((sum, product) => sum + Number(product.stock || 0) * Number(product.price || 0), 0)],
@@ -1164,7 +1216,7 @@ function exportReportSummaryCsv(data) {
   const url = URL.createObjectURL(file)
   const link = document.createElement('a')
   link.href = url
-  link.download = `fullstock-report-summary-${new Date().toISOString().slice(0, 10)}.csv`
+  link.download = `fullstock-report-summary-${dateInputValue(new Date())}.csv`
   document.body.appendChild(link)
   link.click()
   link.remove()
@@ -1251,7 +1303,7 @@ function AssistantPage({ data, conversations, activeConversation, onNewChat, onS
       <div className="suggested-prompts"><span>TRY ASKING</span><button onClick={() => ask('Which products are low stock?')}>Which products are low stock?</button><button onClick={() => ask('How do I record a sale?')}>How do I record a sale?</button><button onClick={() => ask('How much did we sell this week?')}>How much did we sell this week?</button></div>
       <form className="chat-composer" onSubmit={(event) => { event.preventDefault(); ask() }}><input value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Ask about products, sales, stock, suppliers, or how to use FullStock..." /><button aria-label="Send message" disabled={!question.trim() || busy}><Send size={17} /></button></form><p className="assistant-disclaimer">Answers about business data use your FullStock records. Review recommendations before taking action.</p>
     </section>
-      <aside className="assistant-aside"><div className="panel quick-insights"><div className="panel-heading"><div><h2>Inventory snapshot</h2><p>Based on current records</p></div><Sparkles size={16} className="accent-icon" /></div><div className="quick-insight-stat"><strong>{data.products.filter((p) => Number(p.stock) <= Number(p.reorder_level)).length}</strong><span>products at or below reorder level</span></div><div className="quick-low-list">{data.products.filter((p) => Number(p.stock) <= Number(p.reorder_level)).map((product) => <div key={product.id}><span>{product.name}</span><strong>{product.stock} left</strong></div>)}</div><button className="text-button" onClick={() => ask('Which products should I restock?')}>Review restock priorities <ArrowUpRight size={14} /></button></div><div className="assistant-note"><Clock3 size={17} /><div><strong>Data refreshes with your activity</strong><span>New sales and stock adjustments update future recommendations.</span></div></div></aside></div>
+      <aside className="assistant-aside"><div className="panel quick-insights"><div className="panel-heading"><div><h2>Inventory snapshot</h2><p>Based on current records</p></div><Sparkles size={16} className="accent-icon" /></div><div className="quick-insight-stat"><strong>{data.products.filter((p) => Number(p.available_stock ?? p.stock) <= Number(p.reorder_level)).length}</strong><span>products at or below reorder level</span></div><div className="quick-low-list">{data.products.filter((p) => Number(p.available_stock ?? p.stock) <= Number(p.reorder_level)).map((product) => <div key={product.id}><span>{product.name}</span><strong>{product.available_stock ?? product.stock} kg available</strong></div>)}</div><button className="text-button" onClick={() => ask('Which products should I restock?')}>Review restock priorities <ArrowUpRight size={14} /></button></div><div className="assistant-note"><Clock3 size={17} /><div><strong>Data refreshes with your activity</strong><span>New sales and stock adjustments update future recommendations.</span></div></div></aside></div>
   </>
 }
 
@@ -2279,27 +2331,26 @@ useEffect(() => {
 }
 
 function TableFooter({ count, total, page = 1, pages = 1, onPage = () => {} }) {
-  const first = count ? ((page - 1) * PAGE_SIZE) + 1 : 0
-  const last = Math.min(page * PAGE_SIZE, count)
-  return <div className="table-footer"><span>Showing <strong>{first}–{last}</strong> of <strong>{count}</strong> results{count !== total && <small> ({total} total)</small>}</span>{pages > 1 && <div className="table-pagination"><button disabled={page <= 1} aria-label="Previous page" onClick={() => onPage(page - 1)}>‹</button><span>Page {page} of {pages}</span><button disabled={page >= pages} aria-label="Next page" onClick={() => onPage(page + 1)}>›</button></div>}</div>
+  return <div className="table-footer"><span>Page <strong>{page}</strong> of <strong>{pages}</strong></span>{pages > 1 && <div className="table-pagination"><button disabled={page <= 1} aria-label="Previous page" onClick={() => onPage(page - 1)}>‹</button><button disabled={page >= pages} aria-label="Next page" onClick={() => onPage(page + 1)}>›</button></div>}</div>
 }
 
 function EmptyState({ title, text }) { return <div className="empty-state"><div><Package size={19} /></div><strong>{title}</strong><span>{text}</span></div> }
 
 function EntityModal({ type, item, suppliers, products = [], onClose, onNavigate, onSave }) {
   const [form, setForm] = useState(() => {
-    if (!item) return type === 'Products' ? { name: '', category: riceCatalog[0].category, price: '', stock: '0', reorder_level: '5', is_best_seller: false, supplier_id: '' } : { name: '', contact: '', email: '', products: '' }
-    const current = type === 'Products' ? { ...item, stock: Number(item.stock || 0) / KG_PER_SACK, reorder_level: Number(item.reorder_level || 0) / KG_PER_SACK } : { ...item }
+    if (!item) return type === 'Products' ? { name: '', category: riceCatalog[0].category, price: '', reorder_level: '5', is_best_seller: false, supplier_id: '' } : { name: '', contact: '', email: '', products: '' }
+    const current = type === 'Products' ? { ...item, reorder_level: Number(item.reorder_level || 0) / KG_PER_SACK } : { ...item }
+    delete current.stock
     delete current.sku
     return current
   })
   const supplier = type === 'Suppliers'
   const productNameTaken = type === 'Products' && products.some((product) => String(product.id) !== String(item?.id) && String(product.name).trim().toLowerCase() === String(form.name || '').trim().toLowerCase())
   const update = (key, value) => setForm((current) => ({ ...current, [key]: value }))
-  return <Modal title={(item ? 'Edit ' : 'Add ') + type.slice(0, -1).toLowerCase()} onClose={onClose}><form className="modal-form" onSubmit={(event) => { event.preventDefault(); if (type === 'Products' && (!String(form.name || '').trim() || productNameTaken)) return; onSave(type === 'Products' ? { ...form, name: form.name.trim() } : form) }}>
+  return <Modal title={(item ? 'Edit ' : 'Add ') + type.slice(0, -1).toLowerCase()} onClose={onClose}><form className="modal-form" onSubmit={(event) => { event.preventDefault(); if (type === 'Products' && (!String(form.name || '').trim() || productNameTaken)) return; const values = { ...form }; delete values.stock; onSave(type === 'Products' ? { ...values, name: form.name.trim() } : values) }}>
     <label className="field-label">{supplier ? 'Supplier name' : 'Rice product'}<input className="text-input" value={form.name || ''} onChange={(event) => update('name', event.target.value)} required maxLength={160} placeholder={supplier ? 'Supplier name' : 'e.g. Organic Jasmine Rice'} /></label>
     {type === 'Products' && productNameTaken && <p className="form-error" role="alert">That product is already in your catalog. Open Inventory to add stock to it.</p>}
-    {supplier ? <><label className="field-label">Contact number<input className="text-input" value={form.contact || ''} onChange={(event) => update('contact', event.target.value)} /></label><label className="field-label">Email<input className="text-input" type="email" value={form.email || ''} onChange={(event) => update('email', event.target.value)} /></label><label className="field-label">Products supplied<input className="text-input" value={form.products || ''} onChange={(event) => update('products', event.target.value)} /></label></> : <><label className="field-label">Rice category<select className="text-input" value={form.category || riceCatalog[0].category} onChange={(event) => update('category', event.target.value)} required>{riceCatalog.map((value) => <option key={value.category} value={value.category}>{value.category}</option>)}</select></label><div className="form-two-col"><label className="field-label">Price per kg (₱)<input type="number" min="0" step=".01" className="text-input" value={form.price || ''} onChange={(event) => update('price', event.target.value)} required /></label>{item && <label className="field-label">Current stock (50 kg sacks)<input type="number" min="0" step=".02" className="text-input" value={form.stock ?? ''} onChange={(event) => update('stock', event.target.value)} required /></label>}</div>{!item && <p className="sale-price-help">New rice varieties start at 0 sacks. Use Inventory → Add stock to receive 50 kg sacks.</p>}<div className="form-two-col"><label className="field-label">Reorder level (50 kg sacks)<input type="number" min="0" step=".02" className="text-input" value={form.reorder_level ?? ''} onChange={(event) => update('reorder_level', event.target.value)} /></label><label className="field-label">Supplier<select className="text-input" value={form.supplier_id || ''} onChange={(event) => update('supplier_id', event.target.value)}><option value="">Select supplier</option>{suppliers.map((value) => <option key={value.id} value={value.id}>{value.name}</option>)}</select></label></div><label className="best-seller-toggle"><input type="checkbox" checked={Boolean(form.is_best_seller)} onChange={(event) => update('is_best_seller', event.target.checked)} /><span><strong>Best seller</strong><small>Show a rice icon for staff and cashiers</small></span><Wheat size={18} aria-hidden="true" /></label></>}
+    {supplier ? <><label className="field-label">Contact number<input className="text-input" value={form.contact || ''} onChange={(event) => update('contact', event.target.value)} /></label><label className="field-label">Email<input className="text-input" type="email" value={form.email || ''} onChange={(event) => update('email', event.target.value)} /></label><label className="field-label">Products supplied<input className="text-input" value={form.products || ''} onChange={(event) => update('products', event.target.value)} /></label></> : <><label className="field-label">Rice category<select className="text-input" value={form.category || riceCatalog[0].category} onChange={(event) => update('category', event.target.value)} required>{riceCatalog.map((value) => <option key={value.category} value={value.category}>{value.category}</option>)}</select></label><div className="form-two-col"><label className="field-label">Price per kg (₱)<input type="number" min="0" step=".01" className="text-input" value={form.price || ''} onChange={(event) => update('price', event.target.value)} required /></label></div>{!item && <p className="sale-price-help">New rice varieties start with no stock. Receive dated batches in Inventory.</p>}<div className="form-two-col"><label className="field-label">Reorder level (50 kg sacks)<input type="number" min="0" step=".02" className="text-input" value={form.reorder_level ?? ''} onChange={(event) => update('reorder_level', event.target.value)} /></label><label className="field-label">Supplier<select className="text-input" value={form.supplier_id || ''} onChange={(event) => update('supplier_id', event.target.value)}><option value="">Select supplier</option>{suppliers.map((value) => <option key={value.id} value={value.id}>{value.name}</option>)}</select></label></div><label className="best-seller-toggle"><input type="checkbox" checked={Boolean(form.is_best_seller)} onChange={(event) => update('is_best_seller', event.target.checked)} /><span><strong>Best seller</strong><small>Show a rice icon for staff and cashiers</small></span><Wheat size={18} aria-hidden="true" /></label></>}
     <div className="modal-actions"><button type="button" className="button button-outline" onClick={onClose}>Cancel</button><button className="button button-primary">{item ? 'Save changes' : 'Add record'}</button></div>
   </form></Modal>
 }
@@ -2309,20 +2360,54 @@ function SaleModal({ products, onClose, onSave }) {
   const [quantity, setQuantity] = useState(1)
   const [amountReceived, setAmountReceived] = useState('')
   const product = products.find((value) => String(value.id) === String(productId))
-  const unavailable = !product || Number(product.stock) < Number(quantity) || Number(quantity) < 1
+  const availableQuantity = Number(product?.available_stock ?? product?.stock ?? 0)
+  const unavailable = !product || availableQuantity < Number(quantity) || Number(quantity) < 1
   const unitPrice = Number(product?.price || 0)
   const total = Math.round(unitPrice * Number(quantity || 0) * 100) / 100
   const received = Number(amountReceived)
   const coversTotal = amountReceived !== '' && Number.isFinite(received) && received >= total
   const priceMissing = !Number.isFinite(unitPrice) || unitPrice <= 0
-  return <Modal title="Record a new sale" subtitle="Choose a product and quantity, then enter the cash received." onClose={onClose}><form className="modal-form" onSubmit={(event) => { event.preventDefault(); if (!unavailable && !priceMissing && coversTotal) onSave({ product, quantity: Number(quantity), amountPaid: received }) }}><label className="field-label">Product<select className="text-input" value={productId} onChange={(event) => setProductId(event.target.value)}>{products.map((value) => <option key={value.id} value={value.id}>{value.name} — {Number(value.price) > 0 ? money(value.price) : 'Price needed'} ({value.stock} in stock)</option>)}</select></label><label className="field-label">Quantity<input className="text-input" type="number" min="1" max={product?.stock || 1} value={quantity} onChange={(event) => setQuantity(event.target.value)} /></label><p className="sale-price-help">Unit price is set by an administrator and cannot be changed while recording a sale.</p><div className="sale-total"><span>Unit price</span><strong>{money(unitPrice)}</strong></div><div className="sale-total"><span>Total due</span><strong>{money(total)}</strong></div><label className="field-label">Amount received<input className="text-input" type="number" min={total.toFixed(2)} step="0.01" inputMode="decimal" value={amountReceived} onChange={(event) => setAmountReceived(event.target.value)} placeholder="0.00" required /></label>{amountReceived !== '' && !coversTotal && <p className="form-error" role="alert">Amount is short by {money(total - Math.max(0, received))}.</p>}<div className="sale-total"><span>Change due</span><strong>{money(coversTotal ? received - total : 0)}</strong></div>{priceMissing && <p className="form-error" role="alert">This product has no price. Ask an administrator to set its price in Products before recording a sale.</p>}{unavailable && <p className="form-error" role="alert">Enter a quantity available in stock.</p>}<div className="modal-actions"><button type="button" className="button button-outline" onClick={onClose}>Cancel</button><button className="button button-primary" disabled={unavailable || priceMissing || !coversTotal}>Complete sale</button></div></form></Modal>
+  return <Modal title="Record a new sale" subtitle="Choose a product and quantity, then enter the cash received." onClose={onClose}><form className="modal-form" onSubmit={(event) => { event.preventDefault(); if (!unavailable && !priceMissing && coversTotal) onSave({ product, quantity: Number(quantity), amountPaid: received }) }}><label className="field-label">Product<select className="text-input" value={productId} onChange={(event) => setProductId(event.target.value)}>{products.map((value) => <option key={value.id} value={value.id}>{value.name} — {Number(value.price) > 0 ? money(value.price) : 'Price needed'} ({Number(value.available_stock ?? value.stock)} kg available)</option>)}</select></label><label className="field-label">Quantity<input className="text-input" type="number" min="1" max={availableQuantity || 1} value={quantity} onChange={(event) => setQuantity(event.target.value)} /></label><p className="sale-price-help">Unit price is set by an administrator and cannot be changed while recording a sale.</p><div className="sale-total"><span>Unit price</span><strong>{money(unitPrice)}</strong></div><div className="sale-total"><span>Total due</span><strong>{money(total)}</strong></div><label className="field-label">Amount received<input className="text-input" type="number" min={total.toFixed(2)} step="0.01" inputMode="decimal" value={amountReceived} onChange={(event) => setAmountReceived(event.target.value)} placeholder="0.00" required /></label>{amountReceived !== '' && !coversTotal && <p className="form-error" role="alert">Amount is short by {money(total - Math.max(0, received))}.</p>}<div className="sale-total"><span>Change due</span><strong>{money(coversTotal ? received - total : 0)}</strong></div>{priceMissing && <p className="form-error" role="alert">This product has no price. Ask an administrator to set its price in Products before recording a sale.</p>}{unavailable && <p className="form-error" role="alert">Enter a quantity available in stock.</p>}<div className="modal-actions"><button type="button" className="button button-outline" onClick={onClose}>Cancel</button><button className="button button-primary" disabled={unavailable || priceMissing || !coversTotal}>Complete sale</button></div></form></Modal>
 }
 
-function RestockModal({ product, onClose, onSave }) {
-  const [sacks, setSacks] = useState(1)
-  const [note, setNote] = useState('Supplier restock')
-  const addedKg = Number(sacks) * KG_PER_SACK
-  return <Modal title="Restock rice" subtitle="Each sack contains 50 kg." onClose={onClose}><form className="modal-form" onSubmit={(event) => { event.preventDefault(); if (addedKg > 0) onSave(addedKg, `${sacks} sack${Number(sacks) === 1 ? '' : 's'} × 50 kg${note.trim() ? ` · ${note.trim()}` : ''}`) }}><div className="restock-product-card" aria-label={'Rice being restocked: ' + product.name}><span className="restock-product-icon"><Package size={19} /></span><div className="restock-product-copy"><span className="restock-product-label">RICE BEING RESTOCKED</span><strong>{product.name}</strong><small>{product.category || 'Rice'} <span aria-hidden="true">·</span> Product ID <span className="font-mono">#{product.id}</span></small></div></div><div className="restock-current"><span>Current stock</span><div className="restock-current-copy"><strong>{sackQuantity(product.stock)} sacks</strong><small>{number(product.stock)} kg total</small></div></div><div className="restock-current"><span>Reorder level</span><div className="restock-current-copy"><strong>{sackQuantity(product.reorder_level)} sacks</strong><small>Low stock threshold</small></div></div><label className="field-label">Sacks received<input className="text-input" type="number" min="1" step="1" value={sacks} onChange={(event) => setSacks(event.target.value)} required /></label><div className="restock-current"><span>Stock to add</span><div className="restock-current-copy"><strong>{number(sacks)} sack{Number(sacks) === 1 ? '' : 's'}</strong><small>Adds {number(Number.isFinite(addedKg) ? addedKg : 0)} kg</small></div></div><label className="field-label">Reference or note<input className="text-input" value={note} onChange={(event) => setNote(event.target.value)} /></label><div className="modal-actions"><button type="button" className="button button-outline" onClick={onClose}>Cancel</button><button className="button button-primary" disabled={!Number.isInteger(Number(sacks)) || addedKg < 1} aria-label={'Save restock for ' + product.name}>Save restock</button></div></form></Modal>
+function BatchModal({ products, onClose, onSave }) {
+  const [productId, setProductId] = useState(String(products[0]?.id || ''))
+  const [sacks, setSacks] = useState('1')
+  const [expirationDate, setExpirationDate] = useState('')
+  const [batchCode, setBatchCode] = useState('')
+  const [note, setNote] = useState('')
+  const product = products.find((value) => String(value.id) === productId)
+  const quantityKg = Math.round(Number(sacks) * KG_PER_SACK)
+  const today = dateInputValue(new Date())
+  return <Modal title="Receive a product batch" subtitle="Enter the quantity received and its expiration date." onClose={onClose}><form className="modal-form" onSubmit={(event) => { event.preventDefault(); if (product && quantityKg > 0 && expirationDate >= today) onSave(product, quantityKg, expirationDate, batchCode.trim(), note.trim()) }}><label className="field-label">Product<select className="text-input" value={productId} onChange={(event) => setProductId(event.target.value)} required>{products.map((value) => <option key={value.id} value={value.id}>{value.name} · {value.category}</option>)}</select></label>{product && <div className="restock-current"><span>Available stock</span><div className="restock-current-copy"><strong>{number(product.available_stock ?? 0)} kg</strong></div></div>}<div className="form-two-col"><label className="field-label">Sacks received (50 kg each)<input className="text-input" type="number" min="1" step="1" value={sacks} onChange={(event) => setSacks(event.target.value)} required /></label><label className="field-label">Expiration date<input className="text-input" type="date" min={today} value={expirationDate} onChange={(event) => setExpirationDate(event.target.value)} required /></label></div><div className="restock-current"><span>Batch quantity</span><div className="restock-current-copy"><strong>{number(Number(sacks) || 0)} sack{Number(sacks) === 1 ? '' : 's'}</strong><small>Adds {number(Number.isFinite(quantityKg) ? quantityKg : 0)} kg</small></div></div><label className="field-label">Batch number (optional)<input className="text-input" maxLength={80} value={batchCode} onChange={(event) => setBatchCode(event.target.value)} placeholder="Leave blank to generate one" /></label><label className="field-label">Reference or note (optional)<input className="text-input" maxLength={255} value={note} onChange={(event) => setNote(event.target.value)} /></label><div className="modal-actions"><button type="button" className="button button-outline" onClick={onClose}>Cancel</button><button className="button button-primary" disabled={!product || !Number.isInteger(Number(sacks)) || quantityKg < 1 || !expirationDate || expirationDate < today}>Save batch</button></div></form></Modal>
+}
+
+function BatchEditModal({ batch, onClose, onSave }) {
+  const [remainingQuantity, setRemainingQuantity] = useState(String(batch.remaining_quantity ?? 0))
+  const [expirationDate, setExpirationDate] = useState(batch.expiration_date || '')
+  const [batchCode, setBatchCode] = useState(batch.batch_code || '')
+  const [note, setNote] = useState('')
+  const quantityChanged = Number(remainingQuantity) !== Number(batch.remaining_quantity)
+  const validQuantity = Number.isInteger(Number(remainingQuantity)) && Number(remainingQuantity) >= 0
+  return <Modal title="Edit inventory batch" subtitle={`${batch.product_name} · ${batch.batch_code || 'Unnumbered batch'}`} onClose={onClose}>
+    <form className="modal-form" onSubmit={(event) => {
+      event.preventDefault()
+      if (!validQuantity || (quantityChanged && !note.trim())) return
+      onSave(batch, {
+        remaining_quantity: Number(remainingQuantity),
+        expiration_date: expirationDate || null,
+        batch_code: batchCode.trim() || null,
+        note: note.trim() || batch.note || null,
+      })
+    }}>
+      <div className="restock-current"><span>Originally received</span><div className="restock-current-copy"><strong>{number(batch.received_quantity)} kg</strong><small>Received {batch.received_at ? shortDate(batch.received_at) : 'date unavailable'}</small></div></div>
+      <label className="field-label">Remaining quantity (kg)<input className="text-input" type="number" min="0" step="1" value={remainingQuantity} onChange={(event) => setRemainingQuantity(event.target.value)} required /></label>
+      <label className="field-label">Expiration date (leave blank if unknown)<input className="text-input" type="date" value={expirationDate} onChange={(event) => setExpirationDate(event.target.value)} /></label>
+      <label className="field-label">Batch number<input className="text-input" maxLength={80} value={batchCode} onChange={(event) => setBatchCode(event.target.value)} /></label>
+      <label className="field-label">Reason or note{quantityChanged ? ' (required for a quantity correction)' : ''}<input className="text-input" maxLength={255} value={note} onChange={(event) => setNote(event.target.value)} required={quantityChanged} /></label>
+      <div className="modal-actions"><button type="button" className="button button-outline" onClick={onClose}>Cancel</button><button className="button button-primary" disabled={!validQuantity || (quantityChanged && !note.trim())}>Save batch</button></div>
+    </form>
+  </Modal>
 }
 
 function Modal({ title, subtitle, onClose, children }) {
@@ -2579,7 +2664,7 @@ function App() {
   const saveEntity = async (type, item, values) => {
     const path = pagePaths[type]
     const listKey = type.toLowerCase()
-    const normalized = type === 'Products' ? { ...values, price: Number(values.price), stock: Math.round(Number(values.stock) * KG_PER_SACK), reorder_level: Math.round(Number(values.reorder_level) * KG_PER_SACK), supplier_id: values.supplier_id ? Number(values.supplier_id) : null, supplier_name: data.suppliers.find((supplier) => String(supplier.id) === String(values.supplier_id))?.name || values.supplier_name || '' } : values
+    const normalized = type === 'Products' ? { ...values, price: Number(values.price), reorder_level: Math.round(Number(values.reorder_level) * KG_PER_SACK), supplier_id: values.supplier_id ? Number(values.supplier_id) : null, supplier_name: data.suppliers.find((supplier) => String(supplier.id) === String(values.supplier_id))?.name || values.supplier_name || '' } : values
     if (item) {
       const response = await callApi(api.update(path, item.id, normalized))
       if (session?.token && !response) return
@@ -2588,7 +2673,7 @@ function App() {
     } else {
       const response = await callApi(api.create(path, normalized))
       if (session?.token && !response) return
-      persist({ ...data, [listKey]: [{ id: response?.id || getId(data[listKey]), ...normalized }, ...data[listKey]] })
+      persist({ ...data, [listKey]: [{ ...normalized, id: response?.id || getId(data[listKey]), stock: Number(response?.stock ?? 0), available_stock: Number(response?.available_stock ?? 0), ...response }, ...data[listKey]] })
       notify(type.slice(0, -1) + ' added.')
     }
     setModal(null)
@@ -2608,14 +2693,94 @@ function App() {
   persist({ ...data, [listKey]: data[listKey].filter((value) => value.id !== item.id) })
   notify(type.slice(0, -1) + ' deleted.')
 }
-  const saveRestock = async (product, quantity, note) => {
-    const movement = { id: getId(data.movements), date: new Date().toISOString(), product_id: product.id, product_name: product.name, type: 'Stock In', quantity, reference: note }
-    const savedMovement = await callApi(api.adjustStock({ product_id: product.id, quantity, type: 'in', note }))
-    if (session?.token && !savedMovement) return
-    if (savedMovement?.id) movement.id = savedMovement.id
-    persist({ ...data, products: data.products.map((value) => value.id === product.id ? { ...value, stock: Number(value.stock) + quantity } : value), movements: [movement, ...data.movements] })
+  const saveBatch = async (product, quantityKg, expirationDate, batchCode, note) => {
+    const savedBatch = await callApi(api.receiveBatch({
+      product_id: Number(product.id),
+      quantity_kg: quantityKg,
+      expiration_date: expirationDate,
+      batch_code: batchCode || null,
+      note: note || null,
+    }))
+    if (session?.token && !savedBatch) return
+    const batch = savedBatch || {
+      id: getId(data.batches || []),
+      product_id: product.id,
+      product_name: product.name,
+      batch_code: batchCode || `LOCAL-${Date.now()}`,
+      received_quantity: quantityKg,
+      remaining_quantity: quantityKg,
+      expiration_date: expirationDate,
+      note,
+      received_at: new Date().toISOString(),
+    }
+    const movement = {
+      id: savedBatch?.movement_id || getId(data.movements),
+      date: new Date().toISOString(),
+      product_id: product.id,
+      product_name: product.name,
+      type: 'Stock In',
+      quantity: quantityKg,
+      reference: batch.batch_code,
+    }
+    const isSellable = expirationDate >= dateInputValue(new Date())
+    persist({
+      ...data,
+      products: data.products.map((value) => String(value.id) === String(product.id) ? {
+        ...value,
+        stock: Number(value.stock) + quantityKg,
+        available_stock: Number(value.available_stock ?? value.stock) + (isSellable ? quantityKg : 0),
+      } : value),
+      batches: [batch, ...(data.batches || [])],
+      movements: [movement, ...data.movements],
+    })
     setModal(null)
-    notify('Inventory updated.')
+    notify('Inventory batch added.')
+  }
+  const saveBatchEdit = async (batch, updates) => {
+    const normalizedUpdates = {
+      ...updates,
+      batch_code: updates.batch_code || `B-${String(batch.id).padStart(6, '0')}`,
+    }
+    const savedBatch = await callApi(api.updateBatch(batch.id, normalizedUpdates))
+    if (session?.token && !savedBatch) return
+    if (session?.token) {
+      try {
+        const loaded = await loadWorkspace()
+        persist({ ...readStoredData(), ...loaded })
+      } catch (error) {
+        notify(error.message || 'Batch saved, but the inventory list could not refresh.')
+        return
+      }
+    } else {
+      const oldQuantity = Number(batch.remaining_quantity)
+      const newQuantity = Number(normalizedUpdates.remaining_quantity)
+      const oldSellable = !batch.expiration_date || batch.expiration_date >= dateInputValue(new Date())
+      const newSellable = !normalizedUpdates.expiration_date || normalizedUpdates.expiration_date >= dateInputValue(new Date())
+      const delta = newQuantity - oldQuantity
+      const availableDelta = (newSellable ? newQuantity : 0) - (oldSellable ? oldQuantity : 0)
+      const movement = delta === 0 ? null : {
+        id: getId(data.movements),
+        date: new Date().toISOString(),
+        product_id: batch.product_id,
+        product_name: batch.product_name,
+        type: 'Batch Adjustment',
+        quantity: delta,
+        reference: normalizedUpdates.batch_code,
+        note: normalizedUpdates.note,
+      }
+      persist({
+        ...data,
+        batches: (data.batches || []).map((value) => String(value.id) === String(batch.id) ? { ...value, ...normalizedUpdates } : value),
+        products: data.products.map((value) => String(value.id) === String(batch.product_id) ? {
+          ...value,
+          stock: Number(value.stock) + delta,
+          available_stock: Number(value.available_stock ?? value.stock) + availableDelta,
+        } : value),
+        movements: movement ? [movement, ...data.movements] : data.movements,
+      })
+    }
+    setModal(null)
+    notify('Inventory batch updated.')
   }
   const saveSale = async ({ items, product, quantity, amountPaid }) => {
     const lines = items || [{ product, quantity }]
@@ -2630,12 +2795,55 @@ function App() {
     const sale = { id: getId(data.sales), number: numberText, date: timestamp, total, amount_paid: amountPaidValue, change_given: changeGiven, status: 'Completed', sold_by: session?.user?.id, items: normalized.map(({ product: itemProduct, quantity: itemQuantity, sale_unit }) => ({ product_id: itemProduct.id, product_name: itemProduct.name, quantity: itemQuantity, sale_unit, price: Number(itemProduct.price) })) }
     const savedSale = await callApi(api.createSale({ amount_paid: amountPaidValue, items: normalized.map(({ product: itemProduct, quantity: itemQuantity, sale_unit }) => ({ product_id: Number(itemProduct.id), quantity: itemQuantity, sale_unit })) }))
     if (session?.token && !savedSale) return false
+    if (session?.token) {
+      try {
+        const loaded = await loadWorkspace()
+        persist({ ...readStoredData(), ...loaded })
+      } catch {
+        persist({ ...data, sales: [savedSale, ...data.sales] })
+      }
+      setModal(null)
+      notify('Sale completed and inventory updated.')
+      return true
+    }
+
+    const today = dateInputValue(new Date())
+    const updatedBatches = [...(data.batches || [])]
+    for (const line of normalized) {
+      if (updatedBatches.some((batch) => String(batch.product_id) === String(line.product.id))) continue
+      const openingStock = Number(line.product.stock || 0)
+      if (openingStock > 0) updatedBatches.push({ id: `local-opening-${line.product.id}`, product_id: line.product.id, product_name: line.product.name, batch_code: `OPEN-${line.product.id}`, received_quantity: openingStock, remaining_quantity: openingStock, expiration_date: null, note: 'Opening stock', received_at: timestamp })
+    }
+    for (const [lineIndex, line] of normalized.entries()) {
+      const productBatches = updatedBatches
+        .map((batch, index) => ({ batch, index }))
+        .filter(({ batch }) => String(batch.product_id) === String(line.product.id) && Number(batch.remaining_quantity) > 0 && (!batch.expiration_date || batch.expiration_date >= today))
+        .sort((left, right) => {
+          if (!left.batch.expiration_date) return right.batch.expiration_date ? 1 : 0
+          if (!right.batch.expiration_date) return -1
+          return left.batch.expiration_date.localeCompare(right.batch.expiration_date) || String(left.batch.received_at || '').localeCompare(String(right.batch.received_at || ''))
+        })
+      let leftToAllocate = line.quantity
+      const allocations = []
+      for (const { batch, index } of productBatches) {
+        if (leftToAllocate <= 0) break
+        const allocated = Math.min(leftToAllocate, Number(batch.remaining_quantity))
+        updatedBatches[index] = { ...batch, remaining_quantity: Number(batch.remaining_quantity) - allocated }
+        allocations.push({ batch_id: batch.id, batch_code: batch.batch_code, expiration_date: batch.expiration_date, quantity: allocated })
+        leftToAllocate -= allocated
+      }
+      if (leftToAllocate > 0) {
+        notify(`There is not enough unexpired batch stock for ${line.product.name}.`)
+        return false
+      }
+      if (sale.items[lineIndex]) sale.items[lineIndex].batch_allocations = allocations
+    }
     const completedSale = savedSale || sale
     const movements = normalized.map(({ product: itemProduct, quantity: itemQuantity }, index) => ({ id: getId(data.movements) + index, date: completedSale.date || timestamp, product_id: itemProduct.id, product_name: itemProduct.name, type: 'Sale', quantity: -itemQuantity, reference: 'Sale #' + (completedSale.number || numberText) }))
     persist({ ...data, sales: [completedSale, ...data.sales], products: data.products.map((value) => {
-      const soldLine = normalized.find((line) => String(line.product.id) === String(value.id))
-      return soldLine ? { ...value, stock: Number(value.stock) - soldLine.quantity } : value
-    }), movements: [...movements, ...data.movements] })
+      const soldQuantity = normalized.filter((line) => String(line.product.id) === String(value.id)).reduce((sum, line) => sum + line.quantity, 0)
+      return soldQuantity ? { ...value, stock: Number(value.stock) - soldQuantity, available_stock: Number(value.available_stock ?? value.stock) - soldQuantity } : value
+    }), batches: updatedBatches, movements: [...movements, ...data.movements] })
     setModal(null)
     notify('Sale completed and inventory updated.')
     return true
@@ -2647,7 +2855,37 @@ function App() {
       const voidedAt = new Date().toISOString()
       const updated = { ...sale, status: 'Voided', voided_at: voidedAt, voided_by: session?.user?.id, voided_by_name: session?.user?.name, void_reason: reason }
       const movements = (sale.items || []).map((item, index) => ({ id: getId(data.movements) + index, date: voidedAt, product_id: item.product_id, product_name: item.product_name, type: 'Sale Void', quantity: Number(item.quantity), reference: 'Void sale #' + (sale.number || sale.id), note: reason }))
-      persist({ ...data, sales: data.sales.map((item) => item.id === sale.id ? updated : item), products: data.products.map((product) => { const line = (sale.items || []).find((item) => String(item.product_id) === String(product.id)); return line ? { ...product, stock: Number(product.stock) + Number(line.quantity) } : product }), movements: [...movements, ...data.movements] })
+      const today = dateInputValue(new Date())
+      const restoredBatches = [...(data.batches || [])]
+      const restoredByProduct = new Map()
+      for (const item of sale.items || []) {
+        const allocations = item.batch_allocations || []
+        let sellableQuantity = 0
+        if (!allocations.length) {
+          restoredBatches.unshift({ id: `local-void-${sale.id}-${item.product_id}`, product_id: item.product_id, product_name: item.product_name, batch_code: `VOID-${sale.id}`, received_quantity: Number(item.quantity), remaining_quantity: Number(item.quantity), expiration_date: null, note: 'Restored from voided sale', received_at: voidedAt })
+          sellableQuantity = Number(item.quantity)
+        } else {
+          for (const allocation of allocations) {
+            const index = restoredBatches.findIndex((batch) => String(batch.id) === String(allocation.batch_id))
+            if (index >= 0) restoredBatches[index] = { ...restoredBatches[index], remaining_quantity: Number(restoredBatches[index].remaining_quantity) + Number(allocation.quantity) }
+            if (!allocation.expiration_date || allocation.expiration_date >= today) sellableQuantity += Number(allocation.quantity)
+          }
+        }
+        const current = restoredByProduct.get(String(item.product_id)) || { total: 0, available: 0 }
+        current.total += Number(item.quantity)
+        current.available += sellableQuantity
+        restoredByProduct.set(String(item.product_id), current)
+      }
+      persist({
+        ...data,
+        sales: data.sales.map((item) => item.id === sale.id ? updated : item),
+        products: data.products.map((product) => {
+          const restored = restoredByProduct.get(String(product.id))
+          return restored ? { ...product, stock: Number(product.stock) + restored.total, available_stock: Number(product.available_stock ?? product.stock) + restored.available } : product
+        }),
+        batches: restoredBatches,
+        movements: [...movements, ...data.movements],
+      })
       setSaleToView(null)
       notify('Sale voided and inventory restored.')
       return
@@ -2698,7 +2936,7 @@ function App() {
     ? <StaffPosPage products={data.products} search={search} setSearch={setSearch} onCheckout={saveSale} />
     : <ProductPage products={data.products} search={search} setSearch={setSearch} canManage={canManageWorkspace} onToggleBestSeller={toggleBestSeller} onAdd={() => setModal({ kind: 'entity', type: 'Products' })} onManageStock={() => navigate('Inventory')} onEdit={(item) => setModal({ kind: 'entity', type: 'Products', item })} onDelete={(item) => deleteEntity('Products', item)} />
   else if (title === 'Sales') page = <SalesPage sales={workspaceData.sales} search={search} setSearch={setSearch} onNewSale={() => isStaff ? navigate('Products') : setModal({ kind: 'sale' })} onView={setSaleToView} isStaff={isStaff} />
-  else if (title === 'Inventory') page = <InventoryPage products={data.products} movements={data.movements} search={search} setSearch={setSearch} onRestock={(item) => setModal({ kind: 'restock', item })} />
+  else if (title === 'Inventory') page = <InventoryPage products={data.products} batches={data.batches || []} movements={data.movements} search={search} setSearch={setSearch} onAddBatch={() => setModal({ kind: 'batch' })} onEditBatch={(item) => setModal({ kind: 'edit-batch', item })} />
   else if (title === 'Suppliers') page = <EntityPage items={data.suppliers} search={search} setSearch={setSearch} onAdd={() => setModal({ kind: 'entity', type: title })} onEdit={(item) => setModal({ kind: 'entity', type: title, item })} onDelete={(item) => deleteEntity(title, item)} />
   else if (title === 'Help') page = <HelpPage onNavigate={navigate} />
   else if (title === 'Reports') page = <ReportsPage data={data} onRefresh={() => refreshReportData()} refreshing={reportRefreshing} />
@@ -2709,10 +2947,11 @@ function App() {
   }
   else page = <SettingsPage user={session.user} onToast={notify} onCreateStaffAccount={createStaffAccount} demoSession={session.demo} onChangePassword={changeTemporaryPassword} />
 
-  return <div className="app-shell"><Sidebar active={title} onNavigate={navigate} onSignOut={requestSignOut} mobileOpen={mobileOpen} closeMobile={() => setMobileOpen(false)} user={session.user} visibleNav={visibleNav} lowStockCount={data.products.filter((product) => Number(product.stock) <= Number(product.reorder_level)).length} /><div className="app-main"><Topbar search={search} setSearch={setSearch} openMenu={() => setMobileOpen(true)} user={session.user} onNavigate={navigate} onLowStockProduct={openLowStockProduct} onSignOut={requestSignOut} data={workspaceData} /><main className="page-content" key={title}>{page}</main><footer className="app-footer"><span>© 2026 FullStock</span><span>Inventory made clearer.</span></footer></div>
+  return <div className="app-shell"><Sidebar active={title} onNavigate={navigate} onSignOut={requestSignOut} mobileOpen={mobileOpen} closeMobile={() => setMobileOpen(false)} user={session.user} visibleNav={visibleNav} lowStockCount={data.products.filter((product) => Number(product.available_stock ?? product.stock) <= Number(product.reorder_level)).length} /><div className="app-main"><Topbar search={search} setSearch={setSearch} openMenu={() => setMobileOpen(true)} user={session.user} onNavigate={navigate} onLowStockProduct={openLowStockProduct} onSignOut={requestSignOut} data={workspaceData} /><main className="page-content" key={title}>{page}</main><footer className="app-footer"><span>© 2026 FullStock</span><span>Inventory made clearer.</span></footer></div>
     {modal?.kind === 'entity' && <EntityModal type={modal.type} item={modal.item} suppliers={data.suppliers} products={data.products} onClose={() => setModal(null)} onNavigate={navigate} onSave={(values) => saveEntity(modal.type, modal.item, values)} />}
     {modal?.kind === 'sale' && <SaleModal products={data.products} onClose={() => setModal(null)} onSave={saveSale} />}
-    {modal?.kind === 'restock' && <RestockModal product={modal.item} onClose={() => setModal(null)} onSave={(quantity, note) => saveRestock(modal.item, quantity, note)} />}
+    {modal?.kind === 'batch' && <BatchModal products={data.products} onClose={() => setModal(null)} onSave={saveBatch} />}
+    {modal?.kind === 'edit-batch' && <BatchEditModal batch={modal.item} onClose={() => setModal(null)} onSave={saveBatchEdit} />}
     {modal?.kind === 'logout' && <Modal title="Log out of FullStock?" subtitle={'You are signed in as ' + (session.user?.name || 'Admin') + '.'} onClose={() => setModal(null)}><p className="logout-confirm-copy">You can sign back in any time with your account.</p><div className="modal-actions"><button className="button button-outline" onClick={() => setModal(null)}>Stay signed in</button><button className="button button-primary logout-confirm-button" onClick={signOut}><LogOut size={15} /> Log out</button></div></Modal>}
     {saleToView && <SaleDetailModal sale={saleToView} canVoid={canVoidSale(saleToView)} requiresAdminApproval={needsAdminVoidApproval(saleToView)} onClose={() => setSaleToView(null)} onVoid={voidSale} />}
     {toast && <div className="toast-message"><span><Check size={15} /></span>{toast}<button aria-label="Dismiss" onClick={() => setToast('')}><X size={15} /></button></div>}

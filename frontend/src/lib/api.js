@@ -121,11 +121,13 @@ export const api = {
   suppliers: () => request('/suppliers'),
   sales: () => request('/sales'),
   movements: () => request('/inventory/movements'),
+  batches: () => request('/inventory/batches'),
   create: (path, data) => request(path, { method: 'POST', body: JSON.stringify(data) }),
   update: (path, id, data) => request(path + '/' + id, { method: 'PUT', body: JSON.stringify(data) }),
   remove: (path, id) => request(path + '/' + id, { method: 'DELETE' }),
   assistant: (question, conversation = [], onToken) => assistantRequest(question, conversation, onToken),
-  adjustStock: (data) => request('/inventory/adjustments', { method: 'POST', body: JSON.stringify(data) }),
+  receiveBatch: (data) => request('/inventory/batches', { method: 'POST', body: JSON.stringify(data) }),
+  updateBatch: (id, data) => request('/inventory/batches/' + id, { method: 'PATCH', body: JSON.stringify(data) }),
   createSale: (data) => request('/sales', { method: 'POST', body: JSON.stringify(data) }),
   voidApprovers: (id) => request(`/sales/${id}/void-approvers`),
   requestVoidCode: (id, data) => request(`/sales/${id}/void-code`, { method: 'POST', body: JSON.stringify(data) }),
@@ -134,13 +136,23 @@ export const api = {
 }
 
 export async function loadWorkspace() {
-  const [products, suppliers, sales, movements] = await Promise.all([
-    api.products(), api.suppliers(), api.sales(), api.movements(),
+  const [products, suppliers, sales, movements, batches] = await Promise.all([
+    api.products(), api.suppliers(), api.sales(), api.movements(), api.batches(),
   ])
   const visibleProducts = products.map((product) => {
     const visibleProduct = { ...product }
     delete visibleProduct.sku
     return visibleProduct
   })
-  return { products: visibleProducts, suppliers, sales, movements }
+  const now = new Date()
+  const today = [now.getFullYear(), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0')].join('-')
+  const productsWithSellableStock = visibleProducts.map((product) => ({
+    ...product,
+    available_stock: batches
+      .filter((batch) => String(batch.product_id) === String(product.id)
+        && Number(batch.remaining_quantity) > 0
+        && (!batch.expiration_date || String(batch.expiration_date).slice(0, 10) >= today))
+      .reduce((total, batch) => total + Number(batch.remaining_quantity || 0), 0),
+  }))
+  return { products: productsWithSellableStock, suppliers, sales, movements, batches }
 }

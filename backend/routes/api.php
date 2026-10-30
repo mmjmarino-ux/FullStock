@@ -31,6 +31,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/suppliers', [SupplierController::class, 'index']);
             Route::get('/suppliers/{supplier}', [SupplierController::class, 'show']);
             Route::get('/inventory/movements', [InventoryController::class, 'movements']);
+            Route::get('/inventory/batches', [InventoryController::class, 'batches']);
             Route::post('/assistant', [AssistantController::class, 'ask'])->middleware('throttle:20,1');
         });
 
@@ -41,7 +42,8 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::post('/password-reset-requests/{passwordResetRequest}/reset', [AuthController::class, 'resetStaffPassword'])->middleware('throttle:6,1');
             Route::apiResource('products', ProductController::class)->only(['store', 'update', 'destroy']);
             Route::apiResource('suppliers', SupplierController::class)->only(['store', 'update', 'destroy']);
-            Route::post('/inventory/adjustments', [InventoryController::class, 'adjust']);
+            Route::post('/inventory/batches', [InventoryController::class, 'receiveBatch']);
+            Route::patch('/inventory/batches/{batch}', [InventoryController::class, 'updateBatch']);
             Route::delete('/password-reset-requests/{passwordResetRequest}', [AuthController::class, 'deletePasswordResetRequest']);
             Route::get('/staff-accounts', [AuthController::class, 'staffAccounts']);
             Route::patch('/staff-accounts/{staff}', [AuthController::class, 'updateStaffAccount']);

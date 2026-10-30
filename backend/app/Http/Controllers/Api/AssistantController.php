@@ -499,7 +499,7 @@ class AssistantController extends Controller
 
         if ((preg_match('/\bhow (?:do|can|should) i\b|\bhow to\b|\bpaano(?: ko)?\b/u', $normalized) === 1)
             && preg_match('/\b(restock|add stock|stock adjustment|inventory|magdagdag ng stock)\b/u', $normalized) === 1) {
-            return "To restock rice, open Inventory, choose the product, select Add stock, enter the quantity received and an optional note, then save. FullStock adds that quantity to the existing stock and records the movement.";
+            return "To receive rice stock, open Inventory, choose Add batch, select the product, enter the quantity and expiration date, then save. FullStock records the batch separately and sales use the earliest-expiring unexpired stock first.";
         }
 
         if (preg_match('/\b(staff|employee|account)\b/u', $normalized)
@@ -509,7 +509,7 @@ class AssistantController extends Controller
 
         if (preg_match('/\b(add|create|make|new|register|magdagdag|gumawa)\b/u', $normalized)
             && preg_match('/\b(product|rice|item|bigas)\b/u', $normalized)) {
-            return 'To add a new rice product, sign in as an administrator, open Products, choose Add product, then enter its name, grain category, price, opening stock, and reorder level. Staff accounts can view products and record sales but cannot add or edit catalog prices.';
+            return 'To add a new rice product, sign in as an administrator, open Products, choose Add product, then enter its name, grain category, price, and reorder level. Receive its stock as an expiration-dated batch from Inventory. Staff accounts can view products and record sales but cannot add or edit catalog prices.';
         }
 
         if (preg_match('/\b(change|edit|update|set|manage|add|modify|baguhin|palitan)\b/u', $normalized)

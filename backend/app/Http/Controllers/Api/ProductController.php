@@ -11,7 +11,12 @@ class ProductController extends Controller
 {
     public function index(Request $request)
     {
-        return Product::with('supplier')->orderBy('name')->get()->map(fn (Product $product) => $this->payload($product));
+        $today = now('Asia/Manila')->toDateString();
+        return Product::with('supplier')->withSum([
+            'batches as available_stock' => fn ($query) => $query
+                ->where('remaining_quantity', '>', 0)
+                ->where(fn ($query) => $query->whereNull('expiration_date')->orWhereDate('expiration_date', '>=', $today)),
+        ], 'remaining_quantity')->orderBy('name')->get()->map(fn (Product $product) => $this->payload($product));
     }
 
     public function show(Request $request, Product $product)
@@ -28,11 +33,11 @@ class ProductController extends Controller
             'name' => ['required', 'string', 'max:160', 'unique:products,name'],
             'category' => ['required', 'string', 'max:80'],
             'price' => ['required', 'numeric', 'min:0'],
-            'stock' => ['required', 'integer', 'min:0'],
             'reorder_level' => ['required', 'integer', 'min:0'],
             'is_best_seller' => ['sometimes', 'boolean'],
             'supplier_id' => ['nullable', 'exists:suppliers,id'],
         ]);
+        $data['stock'] = 0;
         $data['sku'] = ($data['sku'] ?? null) ?: 'FS-' . Str::upper(Str::random(8));
         $product = Product::create($data)->load('supplier');
         return response()->json($this->payload($product), 201);
@@ -45,7 +50,6 @@ class ProductController extends Controller
             'name' => ['sometimes', 'required', 'string', 'max:160', 'unique:products,name,' . $product->id],
             'category' => ['sometimes', 'required', 'string', 'max:80'],
             'price' => ['sometimes', 'required', 'numeric', 'min:0'],
-            'stock' => ['sometimes', 'required', 'integer', 'min:0'],
             'reorder_level' => ['sometimes', 'required', 'integer', 'min:0'],
             'is_best_seller' => ['sometimes', 'boolean'],
             'supplier_id' => ['sometimes', 'nullable', 'exists:suppliers,id'],
@@ -67,6 +71,10 @@ class ProductController extends Controller
             unset($payload['supplier'], $payload['supplier_id']);
         }
 
-        return [...$payload, 'supplier_name' => $includeSupplier ? ($product->supplier?->name ?? '') : ''];
+        return [
+            ...$payload,
+            'available_stock' => (int) ($product->available_stock ?? $product->stock),
+            'supplier_name' => $includeSupplier ? ($product->supplier?->name ?? '') : '',
+        ];
     }
 }

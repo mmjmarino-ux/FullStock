@@ -22,6 +22,7 @@ export const starterData = {
   suppliers: [],
   sales: [],
   movements: [],
+  batches: [],
 }
 
 export function readStoredData() {
@@ -75,6 +76,33 @@ export function readStoredData() {
           return cleanProduct
         })
       }
+      if (!Array.isArray(workspace.batches)) workspace.batches = []
+      for (const product of workspace.products || []) {
+        const hasBatch = workspace.batches.some((batch) => String(batch.product_id) === String(product.id))
+        const quantity = Number(product.stock || 0)
+        if (!hasBatch && quantity > 0) {
+          workspace.batches.push({
+            id: `local-opening-${product.id}`,
+            product_id: product.id,
+            product_name: product.name,
+            batch_code: `OPEN-${product.id}`,
+            received_quantity: quantity,
+            remaining_quantity: quantity,
+            expiration_date: null,
+            note: 'Opening stock carried forward during batch inventory setup',
+            received_at: new Date().toISOString(),
+          })
+        }
+      }
+      const today = [new Date().getFullYear(), String(new Date().getMonth() + 1).padStart(2, '0'), String(new Date().getDate()).padStart(2, '0')].join('-')
+      workspace.products = (workspace.products || []).map((product) => ({
+        ...product,
+        available_stock: workspace.batches
+          .filter((batch) => String(batch.product_id) === String(product.id)
+            && Number(batch.remaining_quantity) > 0
+            && (!batch.expiration_date || batch.expiration_date >= today))
+          .reduce((sum, batch) => sum + Number(batch.remaining_quantity || 0), 0),
+      }))
       const riceProductNames = new Set([
         ...riceCatalog.flatMap((group) => group.products),
         ...(Array.isArray(workspace.products) ? workspace.products.map((product) => product.name) : []),

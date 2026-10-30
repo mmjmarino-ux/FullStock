@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\InventoryMovement;
+use App\Models\InventoryBatch;
 use App\Models\Product;
 use App\Models\Sale;
 use App\Models\User;
@@ -32,6 +33,7 @@ class SalesController extends Controller
     public function store(Request $request)
     {
         $canSetPrice = $request->user()->can('manage-workspace');
+        $today = now('Asia/Manila')->toDateString();
         if ($request->has('items')) {
             $rules = [
                 'amount_paid' => ['sometimes', 'numeric', 'min:0'],
@@ -67,11 +69,24 @@ class SalesController extends Controller
         $amountPaid = array_key_exists('amount_paid', $data)
             ? round((float) $data['amount_paid'], 2)
             : null;
-        $sale = DB::transaction(function () use ($items, $canSetPrice, $request, $amountPaid) {
+        $sale = DB::transaction(function () use ($items, $canSetPrice, $request, $amountPaid, $today) {
             $productIds = collect($items)->pluck('product_id')->unique()->sort()->values();
             $products = Product::whereKey($productIds)->orderBy('id')->lockForUpdate()->get()->keyBy('id');
             if ($products->count() !== $productIds->count()) {
                 throw ValidationException::withMessages(['items' => ['One or more rice products are no longer available.']]);
+            }
+
+            $requestedByProduct = collect($items)->groupBy('product_id')->map(fn ($lines) => $lines->sum('quantity'));
+            foreach ($requestedByProduct as $productId => $requestedQuantity) {
+                $availableQuantity = InventoryBatch::query()
+                    ->where('product_id', $productId)
+                    ->where('remaining_quantity', '>', 0)
+                    ->where(fn ($query) => $query->whereNull('expiration_date')->orWhereDate('expiration_date', '>=', $today))
+                    ->sum('remaining_quantity');
+                if ($availableQuantity < $requestedQuantity) {
+                    $productName = $products->get($productId)?->name ?? 'This product';
+                    throw ValidationException::withMessages(['items' => ["There is not enough unexpired batch stock for {$productName}."]]);
+                }
             }
 
             $pricedItems = [];
@@ -91,10 +106,6 @@ class SalesController extends Controller
                 if ((float) $product->price <= 0) {
                     throw ValidationException::withMessages(["items.{$index}.product_id" => ['Set a price greater than zero before recording this sale.']]);
                 }
-                if ($product->stock < $item['quantity']) {
-                    throw ValidationException::withMessages(["items.{$index}.quantity" => ["There is not enough stock for {$product->name}."]]);
-                }
-
                 // Staff always sell at the administrator-managed catalog price.
                 $unitPrice = $canSetPrice ? (float) ($item['unit_price'] ?? $product->price) : (float) $product->price;
                 if ($unitPrice <= 0) {
@@ -130,7 +141,7 @@ class SalesController extends Controller
             foreach ($pricedItems as $pricedItem) {
                 $product = $pricedItem['product'];
                 $item = $pricedItem['item'];
-                $sale->items()->create([
+                $saleItem = $sale->items()->create([
                     'product_id' => $product->id,
                     'product_name' => $product->name,
                     'quantity' => $item['quantity'],
@@ -138,6 +149,35 @@ class SalesController extends Controller
                     'unit_price' => $pricedItem['unitPrice'],
                     'line_total' => $pricedItem['lineTotal'],
                 ]);
+                $remainingToAllocate = (int) $item['quantity'];
+                $batches = InventoryBatch::query()
+                    ->where('product_id', $product->id)
+                    ->where('remaining_quantity', '>', 0)
+                    ->where(fn ($query) => $query->whereNull('expiration_date')->orWhereDate('expiration_date', '>=', $today))
+                    ->orderByRaw('CASE WHEN expiration_date IS NULL THEN 1 ELSE 0 END')
+                    ->orderBy('expiration_date')
+                    ->orderBy('created_at')
+                    ->orderBy('id')
+                    ->lockForUpdate()
+                    ->get();
+                foreach ($batches as $batch) {
+                    if ($remainingToAllocate <= 0) {
+                        break;
+                    }
+                    $allocated = min($remainingToAllocate, (int) $batch->remaining_quantity);
+                    $batch->decrement('remaining_quantity', $allocated);
+                    DB::table('sale_item_batches')->insert([
+                        'sale_item_id' => $saleItem->id,
+                        'inventory_batch_id' => $batch->id,
+                        'quantity' => $allocated,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+                    $remainingToAllocate -= $allocated;
+                }
+                if ($remainingToAllocate > 0) {
+                    throw ValidationException::withMessages(['items' => ["Batch stock changed while recording the sale for {$product->name}. Please retry."]]);
+                }
                 $product->decrement('stock', $item['quantity']);
                 InventoryMovement::create([
                     'product_id' => $product->id,
@@ -219,6 +259,24 @@ class SalesController extends Controller
                 $product = $products->get($item->product_id);
                 if (! $product) {
                     throw ValidationException::withMessages(['sale' => ['A product from this sale is no longer available, so stock cannot be restored safely.']]);
+                }
+                $allocations = DB::table('sale_item_batches')->where('sale_item_id', $item->id)->get();
+                if ($allocations->isEmpty()) {
+                    $batch = $product->batches()->create([
+                        'batch_code' => 'VOID-' . $lockedSale->id . '-' . $item->id,
+                        'received_quantity' => $item->quantity,
+                        'remaining_quantity' => $item->quantity,
+                        'expiration_date' => null,
+                        'note' => 'Restored from a sale recorded before batch tracking',
+                    ]);
+                } else {
+                    foreach ($allocations as $allocation) {
+                        $batch = InventoryBatch::whereKey($allocation->inventory_batch_id)->lockForUpdate()->first();
+                        if (! $batch) {
+                            throw ValidationException::withMessages(['sale' => ['A batch from this sale no longer exists, so stock cannot be restored safely.']]);
+                        }
+                        $batch->increment('remaining_quantity', $allocation->quantity);
+                    }
                 }
                 $product->increment('stock', $item->quantity);
                 InventoryMovement::create([
@@ -426,6 +484,21 @@ class SalesController extends Controller
                 'quantity' => $item->quantity,
                 'sale_unit' => $item->sale_unit ?? 'kg',
                 'price' => (float) $item->unit_price,
+                    'batch_allocations' => DB::table('sale_item_batches')
+                        ->join('inventory_batches', 'inventory_batches.id', '=', 'sale_item_batches.inventory_batch_id')
+                        ->where('sale_item_batches.sale_item_id', $item->id)
+                        ->get([
+                            'inventory_batches.id',
+                            'inventory_batches.batch_code',
+                            'inventory_batches.expiration_date',
+                            'sale_item_batches.quantity',
+                        ])
+                        ->map(fn ($allocation) => [
+                            'batch_id' => $allocation->id,
+                            'batch_code' => $allocation->batch_code,
+                            'expiration_date' => $allocation->expiration_date,
+                            'quantity' => (int) $allocation->quantity,
+                        ])->values(),
             ])->values(),
         ];
     }
