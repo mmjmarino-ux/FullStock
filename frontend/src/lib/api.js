@@ -127,6 +127,10 @@ export const api = {
   assistant: (question, conversation = [], onToken) => assistantRequest(question, conversation, onToken),
   adjustStock: (data) => request('/inventory/adjustments', { method: 'POST', body: JSON.stringify(data) }),
   createSale: (data) => request('/sales', { method: 'POST', body: JSON.stringify(data) }),
+  voidApprovers: (id) => request(`/sales/${id}/void-approvers`),
+  requestVoidCode: (id, data) => request(`/sales/${id}/void-code`, { method: 'POST', body: JSON.stringify(data) }),
+  voidApprovals: () => request('/void-approvals'),
+  voidSale: (id, reason, approvalCode = null) => request(`/sales/${id}/void`, { method: 'POST', body: JSON.stringify({ reason, ...(approvalCode ? { approval_code: approvalCode } : {}) }) }),
 }
 
 export async function loadWorkspace() {

@@ -30,6 +30,7 @@ class ProductController extends Controller
             'price' => ['required', 'numeric', 'min:0'],
             'stock' => ['required', 'integer', 'min:0'],
             'reorder_level' => ['required', 'integer', 'min:0'],
+            'is_best_seller' => ['sometimes', 'boolean'],
             'supplier_id' => ['nullable', 'exists:suppliers,id'],
         ]);
         $data['sku'] = ($data['sku'] ?? null) ?: 'FS-' . Str::upper(Str::random(8));
@@ -46,6 +47,7 @@ class ProductController extends Controller
             'price' => ['sometimes', 'required', 'numeric', 'min:0'],
             'stock' => ['sometimes', 'required', 'integer', 'min:0'],
             'reorder_level' => ['sometimes', 'required', 'integer', 'min:0'],
+            'is_best_seller' => ['sometimes', 'boolean'],
             'supplier_id' => ['sometimes', 'nullable', 'exists:suppliers,id'],
         ]);
         $product->update($data);

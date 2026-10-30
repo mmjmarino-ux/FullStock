@@ -7,11 +7,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Product extends Model
 {
-    protected $fillable = ['sku', 'name', 'category', 'price', 'stock', 'reorder_level', 'supplier_id'];
+    protected $fillable = ['sku', 'name', 'category', 'price', 'stock', 'reorder_level', 'is_best_seller', 'supplier_id'];
 
     protected function casts(): array
     {
-        return ['price' => 'decimal:2', 'stock' => 'integer', 'reorder_level' => 'integer'];
+        return ['price' => 'decimal:2', 'stock' => 'integer', 'reorder_level' => 'integer', 'is_best_seller' => 'boolean'];
     }
 
     public function supplier(): BelongsTo

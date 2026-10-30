@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  AlertTriangle, ArrowUpRight, BarChart3, Bell, Bot,
+  AlertTriangle, ArrowUpRight, BarChart3, Bell, Bot, Wheat,
   CalendarDays, Check, ChevronDown, CircleDollarSign, Clock3, Eye, Filter,
   History, LayoutDashboard, LogOut, Mail, Menu, Minus, MoreHorizontal, Package,
   PackagePlus, Pencil, Plus, Search, Send, Settings, ShoppingCart, Sparkles,
@@ -20,10 +20,13 @@ const nav = [
   { label: 'AI Assistant', icon: Bot },
 ]
 const pagePaths = { Products: '/products', Suppliers: '/suppliers' }
+const KG_PER_SACK = 50
+const sackQuantity = (kilograms) => number(Number(kilograms || 0) / KG_PER_SACK)
 const money = (amount) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', maximumFractionDigits: 0 }).format(Number(amount || 0))
 const number = (value) => new Intl.NumberFormat('en-PH').format(Number(value || 0))
 const shortDate = (value) => new Date(value).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
 const dateTime = (value) => new Date(value).toLocaleString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
+const dateTimeManila = (value) => new Date(value).toLocaleString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
 const dateInputValue = (date) => [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-')
 const roleLabel = (role) => {
   const normalizedRole = role?.toLowerCase()
@@ -228,25 +231,45 @@ function Sidebar({ active, onNavigate, onSignOut, mobileOpen, closeMobile, user,
   </>
 }
 
-function Topbar({ search, setSearch, openMenu, user, onNavigate, onSignOut, data }) {
+function Topbar({ search, setSearch, openMenu, user, onNavigate, onLowStockProduct, onSignOut, data }) {
   const [noticeOpen, setNoticeOpen] = useState(false)
+  const [voidApprovals, setVoidApprovals] = useState([])
   const [profileOpen, setProfileOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [activeSearchResult, setActiveSearchResult] = useState(-1)
   const searchRef = useRef(null)
   const userRole = user?.role?.toLowerCase()
   const isStaff = userRole === 'staff'
+  const isAdmin = userRole === 'admin' || userRole === 'administrator'
   const lowStockGroups = ['Short-Grain Rice', 'Medium-Grain Rice', 'Long-Grain Rice'].map((category) => ({
     category,
     products: data.products.filter((product) => String(product.category || '').trim().toLowerCase() === category.toLowerCase() && Number(product.stock) <= Number(product.reorder_level)),
   })).filter((group) => group.products.length > 0)
   const lowStockProductCount = lowStockGroups.reduce((total, group) => total + group.products.length, 0)
+  useEffect(() => {
+    if (!isAdmin) {
+      setVoidApprovals([])
+      return undefined
+    }
+    let mounted = true
+    const refreshApprovals = () => api.voidApprovals().then((items) => {
+      if (mounted) setVoidApprovals(items || [])
+    }).catch(() => {})
+    const firstRefresh = window.setTimeout(refreshApprovals, 250)
+    const interval = window.setInterval(refreshApprovals, 10000)
+    return () => {
+      mounted = false
+      window.clearTimeout(firstRefresh)
+      window.clearInterval(interval)
+    }
+  }, [isAdmin])
+  const notificationCount = lowStockProductCount + (isAdmin ? voidApprovals.length : 0)
   const searchResults = useMemo(() => {
     const query = search.trim().toLowerCase()
     if (!query) return []
     const results = data.products
       .filter((product) => `${product.name} ${product.id} ${product.category || ''}`.toLowerCase().includes(query))
-      .map((product) => ({ key: `product-${product.id}`, label: product.name, detail: `ID ${product.id} · ${product.category || 'Uncategorized'} · ${number(product.stock)} in stock`, type: 'Product', page: 'Products', icon: Package }))
+      .map((product) => ({ key: `product-${product.id}`, label: product.name, detail: `ID ${product.id} · ${product.category || 'Uncategorized'} · ${sackQuantity(product.stock)} 50 kg sacks in stock`, type: 'Product', page: 'Products', icon: Package }))
     results.push(...data.sales
       .filter((sale) => `${sale.number || sale.id} ${dateTime(sale.date)}`.toLowerCase().includes(query))
       .map((sale) => ({ key: `sale-${sale.id}`, label: `Sale #${sale.number || sale.id}`, detail: money(sale.total), type: 'Sale', page: 'Sales', icon: ShoppingCart })))
@@ -291,8 +314,12 @@ function Topbar({ search, setSearch, openMenu, user, onNavigate, onSignOut, data
       {searchOpen && search.trim() && <div className="search-results-panel" id="global-search-results" role="listbox" aria-label="Search results"><div className="search-results-heading">{searchResults.length ? 'Matching records' : 'No matching records'}</div>{searchResults.map((result, index) => { const Icon = result.icon; return <button id={`search-result-${index}`} key={result.key} type="button" role="option" aria-selected={activeSearchResult === index} className={'search-result ' + (activeSearchResult === index ? 'search-result-active' : '')} onMouseDown={(event) => event.preventDefault()} onClick={() => chooseSearchResult(result)}><span className="search-result-icon"><Icon size={16} /></span><span className="search-result-copy"><strong>{result.label}</strong><small>{result.detail}</small></span><span className="search-result-type">{result.type}</span></button>})}</div>}
     </div>}
     <div className="topbar-spacer" />
-    <button className="icon-button notification-button" aria-label={lowStockProductCount ? `Notifications, ${lowStockProductCount} rice products need a stock check` : 'Notifications, no rice products are low stock'} aria-expanded={noticeOpen} aria-controls="stock-notifications" onClick={() => setNoticeOpen(!noticeOpen)}><Bell size={18} />{lowStockProductCount > 0 && <span className="notification-count">{lowStockProductCount > 99 ? '99+' : lowStockProductCount}</span>}</button>
-    {noticeOpen && <div className="notification-popover" id="stock-notifications" role="region" aria-label="Rice stock notifications"><div className="notification-popover-heading"><strong>Rice stock alerts</strong><span>{lowStockProductCount} {lowStockProductCount === 1 ? 'item' : 'items'}</span></div>{lowStockGroups.length ? lowStockGroups.map((group) => <section className="notification-category" key={group.category}><h3>{group.category}</h3>{group.products.map((product) => { const stock = Number(product.stock); const isOut = stock <= 0; return <button className="notification-item" key={product.id} onClick={() => { setSearch(product.name); onNavigate(isStaff ? 'Products' : 'Inventory'); setNoticeOpen(false) }}><i className={'notification-status-dot ' + (isOut ? 'notification-status-out' : '')} /><span className="notification-item-copy"><strong>{product.name}</strong><small>{isOut ? 'Out of stock' : 'Low stock'} · {number(stock)} left · reorder at {number(product.reorder_level)}</small></span><ArrowUpRight size={14} /></button>})}</section>) : <p className="notification-empty"><Check size={15} /> No low-stock products in these rice categories.</p>}</div>}
+    <button className="icon-button notification-button" aria-label={notificationCount ? `Notifications, ${notificationCount} updates` : 'Notifications, no new updates'} aria-expanded={noticeOpen} aria-controls="stock-notifications" onClick={() => setNoticeOpen(!noticeOpen)}><Bell size={18} />{notificationCount > 0 && <span className="notification-count">{notificationCount > 99 ? '99+' : notificationCount}</span>}</button>
+    {noticeOpen && <div className="notification-popover" id="stock-notifications" role="region" aria-label="Notifications"><div className="notification-popover-heading"><strong>Notifications</strong><span>{notificationCount} {notificationCount === 1 ? 'update' : 'updates'}</span></div>
+      {isAdmin && voidApprovals.length > 0 && <section className="notification-category void-code-notifications"><h3>Void approval codes <span>{voidApprovals.length}</span></h3>{voidApprovals.map((approval) => <article className="void-approval-card" key={approval.id}><div className="void-approval-heading"><strong>Sale #{approval.sale_number}</strong><span>Expires {dateTimeManila(approval.expires_at)}</span></div><div className="void-approval-meta"><span>Requested by <strong>{approval.staff_name}</strong></span><span>Reason: {approval.reason}</span></div><div className="void-approval-code" aria-label={'One-time code ' + approval.code}>{approval.code}</div><p className="form-hint">Share only with this cashier. The code works once for this sale.</p></article>)}</section>}
+      {lowStockGroups.map((group) => <section className="notification-category" key={group.category}><h3>{group.category}</h3>{group.products.map((product) => { const stock = Number(product.stock); const isOut = stock <= 0; return <button className="notification-item" key={product.id} onClick={() => { onLowStockProduct(product); setNoticeOpen(false) }}><i className={'notification-status-dot ' + (isOut ? 'notification-status-out' : '')} /><span className="notification-item-copy"><strong>{product.name}</strong><small>{isOut ? 'Out of stock' : 'Low stock'} · {sackQuantity(stock)} sacks ({number(stock)} kg) left · reorder at {sackQuantity(product.reorder_level)} sacks</small></span><ArrowUpRight size={14} /></button>})}</section>)}
+      {!lowStockGroups.length && (!isAdmin || !voidApprovals.length) && <p className="notification-empty"><Check size={15} /> No new notifications.</p>}
+    </div>}
     <div className="top-divider" />
     <div className="profile-menu-wrap"><button className="profile-button" aria-expanded={profileOpen} onClick={() => setProfileOpen(!profileOpen)}><span className="avatar">{(user?.name || 'Admin').charAt(0).toUpperCase()}</span><span className="profile-name">{user?.name || 'Admin'}<small>{roleLabel(user?.role)}</small></span><ChevronDown size={15} /></button>{profileOpen && <div className="profile-menu"><div className="profile-menu-person"><strong>{user?.name || 'Admin'}</strong><span>{user?.email}</span><small>{roleLabel(user?.role)}</small></div>{['admin', 'administrator'].includes(user?.role?.toLowerCase()) && <button onClick={() => { onNavigate('Settings'); setProfileOpen(false) }}><Settings size={15} /> Account settings</button>}<button className="profile-logout" onClick={() => { setProfileOpen(false); onSignOut() }}><LogOut size={15} /> Log out</button></div>}</div>
   </header>
@@ -311,6 +338,7 @@ function SalesChart({ sales, anchorDate }) {
   const monday = new Date(selectedDay.getFullYear(), selectedDay.getMonth(), selectedDay.getDate() - ((selectedDay.getDay() + 6) % 7))
   const days = Array.from({ length: 7 }, (_, index) => new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + index))
   const values = days.map((day) => sales.reduce((sum, sale) => {
+    if (sale.status === 'Voided' || sale.voided_at) return sum
     const date = new Date(sale.date)
     return date.getFullYear() === day.getFullYear() && date.getMonth() === day.getMonth() && date.getDate() === day.getDate() ? sum + Number(sale.total || 0) : sum
   }, 0))
@@ -325,16 +353,17 @@ function SalesChart({ sales, anchorDate }) {
 function Dashboard({ data, user, onNavigate }) {
   const [selectedDate, setSelectedDate] = useState(() => dateInputValue(new Date()))
   const [datePickerOpen, setDatePickerOpen] = useState(false)
-  const salesTotal = data.sales.reduce((sum, sale) => sum + Number(sale.total || 0), 0)
+  const completedSales = data.sales.filter((sale) => sale.status !== 'Voided' && !sale.voided_at)
+  const salesTotal = completedSales.reduce((sum, sale) => sum + Number(sale.total || 0), 0)
   const lowStockProducts = data.products.filter((product) => Number(product.stock) <= Number(product.reorder_level))
   const lowStock = lowStockProducts.length
   const bestsellers = useMemo(() => {
     const sold = {}
-    data.sales.forEach((sale) => (sale.items || []).forEach((item) => { sold[item.product_name] = (sold[item.product_name] || 0) + Number(item.quantity || 0) }))
+    completedSales.forEach((sale) => (sale.items || []).forEach((item) => { sold[item.product_name] = (sold[item.product_name] || 0) + Number(item.quantity || 0) }))
     return Object.entries(sold).sort((a, b) => b[1] - a[1]).slice(0, 4)
   }, [data.sales])
   const selectedDateLabel = new Intl.DateTimeFormat('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(selectedDate + 'T12:00:00'))
-  const salesForDate = data.sales.filter((sale) => dateInputValue(new Date(sale.date)) === selectedDate).reduce((sum, sale) => sum + Number(sale.total || 0), 0)
+  const salesForDate = completedSales.filter((sale) => dateInputValue(new Date(sale.date)) === selectedDate).reduce((sum, sale) => sum + Number(sale.total || 0), 0)
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
   const displayName = user?.name?.trim().split(/\s+/)[0] || 'Admin'
@@ -349,7 +378,7 @@ function Dashboard({ data, user, onNavigate }) {
     </div>
     <div className="dashboard-grid dashboard-main-grid">
       <section className="panel chart-panel"><div className="panel-heading"><div><h2>Sales overview</h2><p>Daily sales for the selected week</p></div><span className="select-button select-static">Week of {selectedDateLabel}</span></div><SalesChart sales={data.sales} anchorDate={selectedDate} /></section>
-      <section className="panel bestsellers-panel"><div className="panel-heading"><div><h2>Top selling products</h2><p>Based on units sold</p></div><button className="more-button" aria-label="More options"><MoreHorizontal size={18} /></button></div><div className="top-product-list">{bestsellers.length ? bestsellers.map(([name, quantity], index) => <div className="top-product" key={name}><span className={'product-thumb thumb-' + index}><Package size={16} /></span><span className="top-product-name">{name}</span><strong>{quantity}</strong></div>) : <div className="empty-inline">Your top products will appear here.</div>}</div><button className="button button-soft button-wide" onClick={() => onNavigate('Products')}>View all products <ArrowUpRight size={14} /></button></section>
+      <section className="panel bestsellers-panel"><div className="panel-heading"><div><h2>Top selling products</h2><p>Based on kg sold</p></div><button className="more-button" aria-label="More options"><MoreHorizontal size={18} /></button></div><div className="top-product-list">{bestsellers.length ? bestsellers.map(([name, quantity], index) => <div className="top-product" key={name}><span className={'product-thumb thumb-' + index}><Package size={16} /></span><span className="top-product-name">{name}</span><strong>{number(quantity)} kg</strong></div>) : <div className="empty-inline">Your top products will appear here.</div>}</div><button className="button button-soft button-wide" onClick={() => onNavigate('Products')}>View all products <ArrowUpRight size={14} /></button></section>
     </div>
     <div className="dashboard-grid dashboard-lower-grid">
       <section className="panel recent-sales-panel"><div className="panel-heading"><div><h2>Recent sales</h2><p>Latest transactions from your store</p></div><button className="text-button" onClick={() => onNavigate('Sales')}>View all <ArrowUpRight size={14} /></button></div><SalesTable sales={data.sales.slice(0, 4)} compact /></section>
@@ -371,7 +400,8 @@ function TableActions({ onEdit, onDelete, label }) {
   return <div className="table-actions"><button aria-label={'Edit ' + label} onClick={onEdit}><Pencil size={14} /></button><button aria-label={'Delete ' + label} className="delete-action" onClick={onDelete}><Trash2 size={14} /></button></div>
 }
 
-function ProductPage({ products, search, setSearch, onAdd, onManageStock, onEdit, onDelete, canManage = true }) {
+function ProductPage({ products, search, setSearch, onAdd, onManageStock, onEdit, onDelete, onToggleBestSeller, canManage = true }) {
+  const [bestSellerBusy, setBestSellerBusy] = useState(null)
   const [category, setCategory] = useState('All categories')
   const [status, setStatus] = useState('All status')
   const [page, setPage] = useState(1)
@@ -385,10 +415,15 @@ function ProductPage({ products, search, setSearch, onAdd, onManageStock, onEdit
     return matches && byCategory && byStatus
   })
   const pages = paginate(shown, page)
+  const toggleBestSeller = async (product) => {
+    if (bestSellerBusy !== null) return
+    setBestSellerBusy(product.id)
+    try { await onToggleBestSeller(product) } finally { setBestSellerBusy(null) }
+  }
   return <>
     <SectionHeading eyebrow="RICE CATALOG" title="Products" subtitle={canManage ? 'Manage your rice varieties. Set actual prices and stock before recording sales.' : 'Browse rice varieties and check current availability.'} action={canManage && <button className="button button-primary" onClick={onAdd}><Plus size={16} /> Add product</button>} />
     <div className="panel table-panel"><div className="table-toolbar"><div className="table-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search products..." /></div><div className="toolbar-filters"><label className="filter-select"><Filter size={14} /><select value={category} onChange={(event) => setCategory(event.target.value)}>{categories.map((value) => <option key={value}>{value}</option>)}</select><ChevronDown size={13} /></label><label className="filter-select"><select value={status} onChange={(event) => setStatus(event.target.value)}><option>All status</option><option>In stock</option><option>Low stock</option></select><ChevronDown size={13} /></label></div></div>
-      <div className="table-scroll"><table><thead><tr><th className="th-product-id">PRODUCT ID</th><th>PRODUCT</th><th>CATEGORY</th><th>PRICE</th><th>STOCK</th><th>STATUS</th>{canManage && <th className="th-actions">ACTIONS</th>}</tr></thead><tbody>{pages.rows.map((product) => <tr key={product.id}><td className="product-id-cell cell-strong font-mono">{product.id}</td><td><div className="table-product"><span className="table-product-thumb"><Package size={16} /></span><div><strong>{product.name}</strong></div></div></td><td>{product.category}</td><td className="cell-strong font-mono">{money(product.price)}</td><td className="cell-strong font-mono">{number(product.stock)}</td><td><StatusPill product={product} /></td>{canManage && <td><TableActions label={product.name} onEdit={() => onEdit(product)} onDelete={() => onDelete(product)} /></td>}</tr>)}</tbody></table></div>
+      <div className="table-scroll"><table><thead><tr><th className="th-product-id">PRODUCT ID</th><th>PRODUCT</th><th>CATEGORY</th><th>PRICE / KG</th><th>STOCK (50 KG SACKS)</th><th>STATUS</th>{canManage && <th className="th-actions">ACTIONS</th>}</tr></thead><tbody>{pages.rows.map((product) => <tr key={product.id}><td className="product-id-cell cell-strong font-mono">{product.id}</td><td><div className="table-product"><span className="table-product-thumb"><Package size={16} /></span><div><strong>{product.name}{canManage ? <button type="button" className={'best-seller-table-toggle' + (product.is_best_seller ? ' is-active' : '')} onClick={() => toggleBestSeller(product)} disabled={bestSellerBusy !== null} aria-label={(product.is_best_seller ? 'Remove ' : 'Mark ') + product.name + ' as best seller'} aria-pressed={Boolean(product.is_best_seller)} title={product.is_best_seller ? 'Best seller: click to remove' : 'Click to mark as best seller'}><Wheat size={16} /></button> : product.is_best_seller && <Wheat className="best-seller-icon" size={15} aria-label="Best seller" title="Best seller" />}</strong></div></div></td><td>{product.category}</td><td className="cell-strong font-mono">{money(product.price)}</td><td className="cell-strong font-mono">{sackQuantity(product.stock)} <span className="muted-text">sacks ({number(product.stock)} kg)</span></td><td><StatusPill product={product} /></td>{canManage && <td><TableActions label={product.name} onEdit={() => onEdit(product)} onDelete={() => onDelete(product)} /></td>}</tr>)}</tbody></table></div>
       {shown.length === 0 && <EmptyState title="No products found" text="Try a different search or add a product to your catalog." />}
       <TableFooter count={shown.length} total={products.length} page={pages.page} pages={pages.pages} onPage={setPage} />
     </div>
@@ -399,32 +434,49 @@ function StaffPosPage({ products, search, setSearch, onCheckout }) {
   const [category, setCategory] = useState('All rice')
   const [cart, setCart] = useState([])
   const [checkoutBusy, setCheckoutBusy] = useState(false)
-  const categories = ['All rice', ...new Set(products.map((product) => product.category).filter(Boolean))]
+  const [paymentOpen, setPaymentOpen] = useState(false)
+  const [amountReceived, setAmountReceived] = useState('')
+  const categories = ['All rice', 'Best sellers', ...new Set(products.map((product) => product.category).filter(Boolean))]
   const shown = products.filter((product) => {
     const matchesSearch = `${product.name} ${product.category || ''}`.toLowerCase().includes(search.toLowerCase())
-    return matchesSearch && (category === 'All rice' || product.category === category)
+    const matchesCategory = category === 'All rice' || category === 'Best sellers' || product.category === category
+    const matchesBestSeller = category !== 'Best sellers' || Boolean(product.is_best_seller)
+    return matchesSearch && matchesCategory && matchesBestSeller
   })
   const lines = cart.map((line) => {
     const product = products.find((item) => String(item.id) === String(line.productId))
-    return product ? { product, quantity: line.quantity, total: Number(product.price || 0) * line.quantity } : null
+    const quantity = line.count * line.kgPerUnit
+    return product ? { product, quantity, count: line.count, kgPerUnit: line.kgPerUnit, saleUnit: line.saleUnit, total: Number(product.price || 0) * quantity } : null
   }).filter(Boolean)
-  const itemCount = lines.reduce((sum, line) => sum + line.quantity, 0)
-  const total = lines.reduce((sum, line) => sum + line.total, 0)
+  const itemCount = lines.reduce((sum, line) => sum + line.count, 0)
+  const total = Math.round(lines.reduce((sum, line) => sum + line.total, 0) * 100) / 100
 
-  const addProduct = (product) => setCart((current) => {
-    const found = current.find((line) => String(line.productId) === String(product.id))
-    if (found) return current.map((line) => String(line.productId) === String(product.id) ? { ...line, quantity: Math.min(Number(product.stock), line.quantity + 1) } : line)
-    return [...current, { productId: product.id, quantity: 1 }]
+  const addProduct = (product, kgPerUnit = 1) => setCart((current) => {
+    const saleUnit = kgPerUnit === 1 ? 'kg' : `bag_${kgPerUnit}kg`
+    const found = current.find((line) => String(line.productId) === String(product.id) && line.kgPerUnit === kgPerUnit)
+    const otherReservedKg = current.filter((line) => String(line.productId) === String(product.id) && line.kgPerUnit !== kgPerUnit).reduce((sum, line) => sum + line.count * line.kgPerUnit, 0)
+    if (found) return current.map((line) => String(line.productId) === String(product.id) && line.kgPerUnit === kgPerUnit ? { ...line, count: Math.min(Math.floor((Number(product.stock) - otherReservedKg) / kgPerUnit), line.count + 1) } : line)
+    if (Number(product.stock) - otherReservedKg < kgPerUnit) return current
+    return [...current, { productId: product.id, count: 1, kgPerUnit, saleUnit }]
   })
-  const updateQuantity = (product, quantity) => setCart((current) => {
-    if (quantity <= 0) return current.filter((line) => String(line.productId) !== String(product.id))
-    return current.map((line) => String(line.productId) === String(product.id) ? { ...line, quantity: Math.min(Number(product.stock), quantity) } : line)
+  const updateCount = (product, kgPerUnit, count) => setCart((current) => {
+    if (count <= 0) return current.filter((line) => !(String(line.productId) === String(product.id) && line.kgPerUnit === kgPerUnit))
+    const otherReservedKg = current.filter((line) => String(line.productId) === String(product.id) && line.kgPerUnit !== kgPerUnit).reduce((sum, line) => sum + line.count * line.kgPerUnit, 0)
+    return current.map((line) => String(line.productId) === String(product.id) && line.kgPerUnit === kgPerUnit ? { ...line, count: Math.min(Math.floor((Number(product.stock) - otherReservedKg) / kgPerUnit), count) } : line)
   })
-  const checkout = async () => {
+  const checkout = () => {
     if (checkoutBusy || !lines.length) return
+    setAmountReceived('')
+    setPaymentOpen(true)
+  }
+  const completeCheckout = async () => {
+    if (checkoutBusy || !lines.length || Number(amountReceived) < total) return
     setCheckoutBusy(true)
     try {
-      if (await onCheckout({ items: lines })) setCart([])
+      if (await onCheckout({ items: lines, amountPaid: Number(amountReceived) })) {
+        setCart([])
+        setPaymentOpen(false)
+      }
     } finally {
       setCheckoutBusy(false)
     }
@@ -441,44 +493,62 @@ function StaffPosPage({ products, search, setSearch, onCheckout }) {
           <div><h2>Rice catalog</h2><p>{number(shown.length)} {shown.length === 1 ? 'product' : 'products'} in catalog</p></div>
           <label className="pos-search"><Search size={16} /><input aria-label="Search rice products" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search rice..." /></label>
         </div>
-        <div className="pos-categories" aria-label="Filter by rice category">{categories.map((value) => <button key={value} className={category === value ? 'pos-category-active' : ''} onClick={() => setCategory(value)}>{value}</button>)}</div>
+        <div className="pos-categories" aria-label="Filter rice products">{categories.map((value) => <button key={value} className={category === value ? 'pos-category-active' : ''} aria-pressed={category === value} onClick={() => setCategory(value)}>{value === 'Best sellers' && <Wheat size={13} aria-hidden="true" />}{value}</button>)}</div>
         {shown.length ? <div className="pos-product-grid">{shown.map((product) => {
           const stock = Number(product.stock)
-          const inCart = cart.find((line) => String(line.productId) === String(product.id))?.quantity || 0
-          const canAdd = stock > inCart && Number(product.price) > 0
+          const reservedKg = cart.filter((line) => String(line.productId) === String(product.id)).reduce((sum, line) => sum + line.count * line.kgPerUnit, 0)
+          const remainingKg = stock - reservedKg
+          const canAdd = remainingKg >= 1 && Number(product.price) > 0
           return <article className={'pos-product-card' + (stock <= 0 ? ' pos-product-unavailable' : '')} key={product.id}>
-            <div className="pos-product-top"><span className="pos-rice-mark"><Package size={19} /></span><span className={'pos-stock-tag' + (stock <= Number(product.reorder_level) ? ' pos-stock-low' : '')}>{stock > 0 ? `${number(stock)} units` : 'Out of stock'}</span></div>
-            <div className="pos-product-copy"><span className="pos-product-category">{product.category || 'Rice'}</span><h3>{product.name}</h3></div>
-            <div className="pos-product-bottom"><strong>{money(product.price)}</strong><button className="pos-add-button" disabled={!canAdd} onClick={() => addProduct(product)} aria-label={'Add ' + product.name + ' to cart'}>{inCart ? <Check size={15} /> : <Plus size={15} />}<span>{inCart ? `Add (${inCart})` : Number(product.price) > 0 ? 'Add' : 'Set price'}</span></button></div>
+            <div className="pos-product-top"><span className="pos-rice-mark"><Package size={19} /></span><span title={`${number(stock)} kg available`} className={'pos-stock-tag' + (stock <= Number(product.reorder_level) ? ' pos-stock-low' : '')}>{stock > 0 ? `${sackQuantity(stock)} sacks` : 'Out of stock'}</span></div>
+            <div className="pos-product-copy"><span className="pos-product-category">{product.category || 'Rice'}</span><h3>{product.name}{product.is_best_seller && <Wheat className="best-seller-icon" size={16} aria-label="Best seller" title="Best seller" />}</h3></div>
+            <div className="pos-product-bottom"><strong>{money(product.price)} / kg</strong><button className="pos-add-button" disabled={!canAdd} onClick={() => addProduct(product)} aria-label={'Add 1 kilogram of ' + product.name + ' to cart'}><Plus size={15} /><span>{Number(product.price) > 0 ? 'Add 1 kg' : 'Set price'}</span></button></div>
+            <div className="pos-bag-options" aria-label={'Add ' + product.name + ' by bag'}><span>Bag:</span>{[10, 15, 20].map((kg) => <button key={kg} type="button" disabled={remainingKg < kg || Number(product.price) <= 0} onClick={() => addProduct(product, kg)}>{kg} kg</button>)}</div>
           </article>
-        })}</div> : <div className="pos-empty-products"><Package size={22} /><strong>No rice products found</strong><span>Try another name or category.</span></div>}
+        })}</div> : <div className="pos-empty-products"><Package size={22} /><strong>{category === 'Best sellers' ? 'No best sellers found' : 'No rice products found'}</strong><span>{category === 'Best sellers' ? 'Best sellers marked by the admin will appear here.' : 'Try another name or category.'}</span></div>}
       </section>
 
       <aside className="pos-cart" aria-label="Current sale">
         <div className="pos-cart-heading"><div><span className="pos-cart-kicker">CURRENT SALE</span><h2>Order</h2></div><span className="pos-cart-count">{number(itemCount)} {itemCount === 1 ? 'item' : 'items'}</span></div>
-        {lines.length ? <div className="pos-cart-lines">{lines.map(({ product, quantity, total: lineTotal }) => <div className="pos-cart-line" key={product.id}>
-          <div className="pos-cart-line-main"><strong>{product.name}</strong><span>{money(product.price)} each</span><b>{money(lineTotal)}</b></div>
-          <div className="pos-quantity-control"><button aria-label={'Remove one ' + product.name} onClick={() => updateQuantity(product, quantity - 1)}>{quantity === 1 ? <Trash2 size={14} /> : <Minus size={14} />}</button><input
+        {lines.length ? <div className="pos-cart-lines">{lines.map(({ product, quantity, count, kgPerUnit, saleUnit, total: lineTotal }) => <div className="pos-cart-line" key={`${product.id}-${kgPerUnit}`}>
+          <div className="pos-cart-line-main"><strong>{product.name}</strong><span>{kgPerUnit === 1 ? `${number(count)} kg` : `${count} × ${kgPerUnit} kg bags (${number(quantity)} kg)`}</span><b>{money(lineTotal)}</b></div>
+          <div className="pos-quantity-control"><button aria-label={'Remove one ' + (kgPerUnit === 1 ? 'kilogram' : `${kgPerUnit} kilogram bag`) + ' of ' + product.name} onClick={() => updateCount(product, kgPerUnit, count - 1)}>{count === 1 ? <Trash2 size={14} /> : <Minus size={14} />}</button><input
   className="pos-quantity-input"
   type="number"
   min="1"
-  max={Number(product.stock)}
+  max={Math.floor((Number(product.stock) - cart.filter((line) => String(line.productId) === String(product.id) && line.kgPerUnit !== kgPerUnit).reduce((sum, line) => sum + line.count * line.kgPerUnit, 0)) / kgPerUnit)}
   step="1"
-  value={quantity}
-  aria-label={'Quantity of ' + product.name}
+  value={count}
+  aria-label={'Number of ' + (kgPerUnit === 1 ? 'kilograms' : `${kgPerUnit} kilogram bags`) + ' of ' + product.name}
   onChange={(event) => {
     const nextQuantity = Number(event.target.value)
 
     if (Number.isInteger(nextQuantity) && nextQuantity >= 1) {
-      updateQuantity(product, nextQuantity)
+      updateCount(product, kgPerUnit, nextQuantity)
     }
   }}
-/><button aria-label={'Add one ' + product.name} disabled={quantity >= Number(product.stock)} onClick={() => updateQuantity(product, quantity + 1)}><Plus size={14} /></button></div>
+/><button aria-label={'Add one ' + (kgPerUnit === 1 ? 'kilogram' : `${kgPerUnit} kilogram bag`) + ' of ' + product.name} disabled={(count + 1) * kgPerUnit + cart.filter((line) => String(line.productId) === String(product.id) && line.kgPerUnit !== kgPerUnit).reduce((sum, line) => sum + line.count * line.kgPerUnit, 0) > Number(product.stock)} onClick={() => updateCount(product, kgPerUnit, count + 1)}><Plus size={14} /></button></div>
         </div>)}</div> : <div className="pos-cart-empty"><span><ShoppingCart size={22} /></span><strong>Cart is ready</strong><p>Tap a product to add it to this sale.</p></div>}
         <div className="pos-cart-summary"><div><span>Items</span><strong>{number(itemCount)}</strong></div><div className="pos-total-row"><span>Total due</span><strong>{money(total)}</strong></div><p><Check size={13} /> Catalog prices are applied automatically.</p><button className="button button-primary pos-checkout-button" disabled={!lines.length || checkoutBusy} onClick={checkout}><ShoppingCart size={16} /> {checkoutBusy ? 'Saving sale…' : 'Complete sale'} <span>{money(total)}</span></button><button className="pos-clear-button" disabled={!lines.length || checkoutBusy} onClick={() => setCart([])}>Clear order</button></div>
       </aside>
     </div>
+    {paymentOpen && <CashPaymentModal total={total} amountReceived={amountReceived} setAmountReceived={setAmountReceived} busy={checkoutBusy} onClose={() => setPaymentOpen(false)} onConfirm={completeCheckout} />}
   </section>
+}
+
+function CashPaymentModal({ total, amountReceived, setAmountReceived, busy, onClose, onConfirm }) {
+  const received = Number(amountReceived)
+  const coversTotal = amountReceived !== '' && Number.isFinite(received) && received >= total
+  const change = coversTotal ? Math.round((received - total) * 100) / 100 : 0
+  return <Modal title="Take cash payment" subtitle="Enter the amount the customer handed over before completing the sale." onClose={busy ? () => {} : onClose}>
+    <form className="modal-form cash-payment-form" onSubmit={(event) => { event.preventDefault(); if (coversTotal) onConfirm() }}>
+      <div className="sale-total"><span>Total due</span><strong>{money(total)}</strong></div>
+      <label className="field-label">Amount received<input autoFocus className="text-input cash-received-input" type="number" min={total.toFixed(2)} step="0.01" inputMode="decimal" value={amountReceived} onChange={(event) => setAmountReceived(event.target.value)} placeholder="0.00" required /></label>
+      {amountReceived !== '' && !coversTotal && <p className="form-error" role="alert">Amount is short by {money(total - Math.max(0, received))}.</p>}
+      <div className="sale-total cash-change-row"><span>Change due</span><strong>{money(change)}</strong></div>
+      <div className="modal-actions"><button type="button" className="button button-outline" onClick={onClose} disabled={busy}>Back to order</button><button className="button button-primary" disabled={!coversTotal || busy}>{busy ? 'Completing sale…' : 'Confirm payment'}</button></div>
+    </form>
+  </Modal>
 }
 
 function SalesPage({ sales, search, setSearch, onNewSale, onView, isStaff = false }) {
@@ -514,7 +584,7 @@ function SalesPage({ sales, search, setSearch, onNewSale, onView, isStaff = fals
     : 'Date & time range'
   return <>
     <SectionHeading eyebrow="TRANSACTIONS" title="Sales" subtitle="Review transactions and record a new sale." action={<button className="button button-primary" onClick={onNewSale}>{isStaff ? <ShoppingCart size={16} /> : <Plus size={16} />}{isStaff ? 'Open register' : 'New sale'}</button>} />
-    <div className="sales-summary-row"><div className="mini-metric"><span>Sales in view</span><strong>{number(shownSales.length)}</strong><small>Matching transactions</small></div><div className="mini-metric"><span>Gross sales</span><strong>{money(shownSales.reduce((sum, item) => sum + Number(item.total || 0), 0))}</strong><small>For current filters</small></div><div className="mini-metric"><span>Average sale</span><strong>{money(shownSales.length ? shownSales.reduce((sum, item) => sum + Number(item.total || 0), 0) / shownSales.length : 0)}</strong><small>Per transaction</small></div></div>
+    <div className="sales-summary-row"><div className="mini-metric"><span>Sales in view</span><strong>{number(shownSales.filter((sale) => sale.status !== 'Voided' && !sale.voided_at).length)}</strong><small>Completed transactions</small></div><div className="mini-metric"><span>Net sales</span><strong>{money(shownSales.filter((sale) => sale.status !== 'Voided' && !sale.voided_at).reduce((sum, item) => sum + Number(item.total || 0), 0))}</strong><small>For current filters</small></div><div className="mini-metric"><span>Average sale</span><strong>{money((() => { const completed = shownSales.filter((sale) => sale.status !== 'Voided' && !sale.voided_at); return completed.length ? completed.reduce((sum, item) => sum + Number(item.total || 0), 0) / completed.length : 0 })())}</strong><small>Per completed transaction</small></div></div>
     <div className="panel table-panel"><div className="table-toolbar sales-toolbar"><div><h2 className="toolbar-title">All sales</h2><p className="toolbar-subtitle">Dates include transaction time</p><div className="table-search sales-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search sales..." /></div></div><div className="date-filter-wrap"><button className="button button-outline" aria-expanded={rangeOpen} onClick={() => { setDraftRange(appliedRange); setRangeOpen(!rangeOpen) }}><CalendarDays size={15} /> {rangeLabel} <ChevronDown size={13} /></button>{rangeOpen && <form className="date-filter-popover" onSubmit={applyRange}><strong>Filter sales by date and time</strong><p className="date-filter-hint">Leave a time blank to include the full selected day.</p><div className="date-filter-grid"><label className="field-label">From date<input className="text-input" type="date" value={draftRange.fromDate} onChange={(event) => updateRange('fromDate', event.target.value)} /></label><label className="field-label">From time<input className="text-input" type="time" value={draftRange.fromTime} onChange={(event) => updateRange('fromTime', event.target.value)} /></label><label className="field-label">To date<input className="text-input" type="date" value={draftRange.toDate} onChange={(event) => updateRange('toDate', event.target.value)} /></label><label className="field-label">To time<input className="text-input" type="time" value={draftRange.toTime} onChange={(event) => updateRange('toTime', event.target.value)} /></label></div>{rangeError && <p className="form-error">{rangeError}</p>}<div className="date-filter-actions"><button type="button" className="text-button" onClick={() => { setDraftRange(emptyRange); setAppliedRange(emptyRange); setRangeError(''); setPage(1); setRangeOpen(false) }}>Clear filters</button><button className="button button-primary button-small">Apply filters</button></div></form>}</div></div><SalesTable sales={pages.rows} onView={onView} /><TableFooter count={shownSales.length} total={sales.length} page={pages.page} pages={pages.pages} onPage={setPage} /></div>
   </>
 }
@@ -528,7 +598,7 @@ function SalesTable({ sales, compact = false, onView }) {
             <th>SALE ID</th>
             <th>DATE &amp; TIME</th>
             <th>ITEMS</th>
-            {!compact && <th>UNITS SOLD</th>}
+            {!compact && <th>KG SOLD</th>}
             <th>TOTAL</th>
             <th>STATUS</th>
             {!compact && <th className="th-actions">ACTIONS</th>}
@@ -578,14 +648,14 @@ function SalesTable({ sales, compact = false, onView }) {
                 </td>
                 {!compact && (
                   <td className="cell-strong font-mono">
-                    {number(unitsSold)}
+                    {number(unitsSold)} kg
                   </td>
                 )}
                 <td className="cell-strong font-mono">{money(sale.total)}</td>
                 <td>
-                  <span className="status-pill status-good">
+                  <span className={'status-pill ' + (sale.status === 'Voided' || sale.voided_at ? 'status-low' : 'status-good')}>
                     <i aria-hidden="true" />
-                    Completed
+                    {sale.status === 'Voided' || sale.voided_at ? 'Voided' : 'Completed'}
                   </span>
                 </td>
                 {!compact && (
@@ -628,14 +698,14 @@ function InventoryPage({ products, movements, search, setSearch, onRestock }) {
   const filtered = products.filter((product) => `${product.name} ${product.id} ${product.category || ''}`.toLowerCase().includes(search.toLowerCase()) && (category === 'All categories' || product.category === category))
   const pages = paginate(filtered, page)
   return <>
-    <SectionHeading eyebrow="STOCK CONTROL" title="Inventory" subtitle="Track on-hand quantities and keep stock moving." action={<button className="button button-outline" onClick={() => document.getElementById('movement-log')?.scrollIntoView({ behavior: 'smooth' })}><History size={15} /> View history</button>} />
-    <div className="panel table-panel"><div className="table-toolbar"><div className="table-search"><Search size={16} /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} placeholder="Search products..." /></div><div className="toolbar-filters"><label className="filter-select"><select value={category} onChange={(event) => { setCategory(event.target.value); setPage(1) }}><option>All categories</option>{categories.map((value) => <option key={value}>{value}</option>)}</select><ChevronDown size={13} /></label></div></div><div className="table-scroll"><table><thead><tr><th>PRODUCT</th><th>CURRENT STOCK</th><th>REORDER LEVEL</th><th>STATUS</th><th className="th-actions">ACTION</th></tr></thead><tbody>{pages.rows.map((product) => <tr key={product.id}><td><div className="table-product"><span className="table-product-thumb"><Package size={16} /></span><div><strong>{product.name}</strong><small>{product.category}</small></div></div></td><td className="cell-strong font-mono">{number(product.stock)} <span className="muted-text">units</span></td><td className="font-mono">{number(product.reorder_level)} units</td><td><StatusPill product={product} /></td><td><button className="button button-soft button-small" onClick={() => onRestock(product)}><Plus size={13} /> Add stock</button></td></tr>)}</tbody></table></div>{filtered.length === 0 && <EmptyState title="No inventory found" text="Try a different search or category." />}<TableFooter count={filtered.length} total={products.length} page={pages.page} pages={pages.pages} onPage={setPage} /></div>
+    <SectionHeading eyebrow="STOCK CONTROL" title="Inventory" subtitle="Track stock in 50 kg sack equivalents and restock by sack." action={<button className="button button-outline" onClick={() => document.getElementById('movement-log')?.scrollIntoView({ behavior: 'smooth' })}><History size={15} /> View history</button>} />
+    <div className="panel table-panel"><div className="table-toolbar"><div className="table-search"><Search size={16} /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} placeholder="Search products..." /></div><div className="toolbar-filters"><label className="filter-select"><select value={category} onChange={(event) => { setCategory(event.target.value); setPage(1) }}><option>All categories</option>{categories.map((value) => <option key={value}>{value}</option>)}</select><ChevronDown size={13} /></label></div></div><div className="table-scroll"><table><thead><tr><th>PRODUCT</th><th>CURRENT STOCK (SACKS)</th><th>REORDER LEVEL (SACKS)</th><th>STATUS</th><th className="th-actions">ACTION</th></tr></thead><tbody>{pages.rows.map((product) => <tr key={product.id}><td><div className="table-product"><span className="table-product-thumb"><Package size={16} /></span><div><strong>{product.name}</strong><small>{product.category}</small></div></div></td><td className="cell-strong font-mono">{sackQuantity(product.stock)} <span className="muted-text">sacks ({number(product.stock)} kg)</span></td><td className="font-mono">{sackQuantity(product.reorder_level)} sacks</td><td><StatusPill product={product} /></td><td><button className="button button-soft button-small" onClick={() => onRestock(product)}><Plus size={13} /> Add stock</button></td></tr>)}</tbody></table></div>{filtered.length === 0 && <EmptyState title="No inventory found" text="Try a different search or category." />}<TableFooter count={filtered.length} total={products.length} page={pages.page} pages={pages.pages} onPage={setPage} /></div>
     <section className="panel movement-panel" id="movement-log"><div className="panel-heading"><div><h2>Stock movements</h2><p>Sales and inventory adjustments</p></div><button className="text-button" onClick={() => setShowAllMovements(!showAllMovements)}>{showAllMovements ? 'Show recent' : 'View all'} <ArrowUpRight size={14} /></button></div><MovementTable movements={showAllMovements ? movements : movements.slice(0, 5)} /></section>
   </>
 }
 
 function MovementTable({ movements }) {
-  return <div className="table-scroll movement-table"><table><thead><tr><th>DATE</th><th>PRODUCT</th><th>TYPE</th><th>QUANTITY</th><th>REFERENCE</th></tr></thead><tbody>{movements.map((movement) => <tr key={movement.id}><td>{shortDate(movement.date)}</td><td className="cell-strong">{movement.product_name}</td><td>{movement.type}</td><td className={'font-mono ' + (Number(movement.quantity) < 0 ? 'quantity-negative' : 'quantity-positive')}>{Number(movement.quantity) > 0 ? '+' : ''}{movement.quantity}</td><td>{movement.reference || 'Manual adjustment'}</td></tr>)}</tbody></table>{movements.length === 0 && <EmptyState title="No stock movements yet" text="Adjustments and completed sales will appear here." />}</div>
+  return <div className="table-scroll movement-table"><table><thead><tr><th>DATE</th><th>PRODUCT</th><th>TYPE</th><th>QUANTITY (KG)</th><th>REFERENCE</th></tr></thead><tbody>{movements.map((movement) => <tr key={movement.id}><td>{shortDate(movement.date)}</td><td className="cell-strong">{movement.product_name}</td><td>{movement.type}</td><td className={'font-mono ' + (Number(movement.quantity) < 0 ? 'quantity-negative' : 'quantity-positive')}>{Number(movement.quantity) > 0 ? '+' : ''}{movement.quantity} kg</td><td>{movement.reference || 'Manual adjustment'}</td></tr>)}</tbody></table>{movements.length === 0 && <EmptyState title="No stock movements yet" text="Adjustments and completed sales will appear here." />}</div>
 }
 
 function EntityPage({ items, search, setSearch, onAdd, onEdit, onDelete }) {
@@ -679,7 +749,7 @@ function ReportsPage({ data, onRefresh, refreshing = false }) {
     const saleDate = new Date(sale.date)
     // Keep persisted sales from the selected local date range even if the Laravel
     // server clock and this browser are offset by a timezone or clock setting.
-    return !Number.isNaN(saleDate.getTime()) && (!startDate || saleDate >= startDate)
+    return sale.status !== 'Voided' && !sale.voided_at && !Number.isNaN(saleDate.getTime()) && (!startDate || saleDate >= startDate)
   })
   const salesTotal = sales.reduce((sum, sale) => sum + Number(sale.total || 0), 0)
   const zeroValueSales = sales.filter((sale) => Number(sale.total || 0) <= 0)
@@ -708,7 +778,7 @@ function ReportsPage({ data, onRefresh, refreshing = false }) {
     performance.revenue += quantity * Number(item.price ?? product?.price ?? 0)
     supplierPerformance.set(String(key), performance)
   }))
-  const categoryCounts = Object.entries(products.reduce((acc, product) => { acc[product.category || 'Other'] = (acc[product.category || 'Other'] || 0) + Number(product.stock || 0); return acc }, {}))
+  const categoryCounts = Object.entries(products.reduce((acc, product) => { acc[product.category || 'Other'] = (acc[product.category || 'Other'] || 0) + Number(product.stock || 0) / KG_PER_SACK; return acc }, {}))
   const categoryColors = ['#10b981', '#6366f1', '#3b82f6', '#f59e0b', '#ef4444', '#0f172a']
   const categoryTotal = categoryCounts.reduce((sum, [, amount]) => sum + Number(amount || 0), 0)
   let categoryAngle = 0
@@ -747,14 +817,14 @@ function ReportsPage({ data, onRefresh, refreshing = false }) {
   }
   const salesBuckets = buildSalesBuckets()
   const productBars = [...productPerformance.values()].sort((a, b) => b.units - a.units).slice(0, 7).map((item) => ({ label: item.name, value: item.units, display: number(item.units) }))
-  const inventoryBars = products.slice().sort((a, b) => Number(b.stock || 0) - Number(a.stock || 0)).slice(0, 7).map((item) => ({ label: item.name, value: Number(item.stock || 0), display: number(item.stock) }))
+  const inventoryBars = products.slice().sort((a, b) => Number(b.stock || 0) - Number(a.stock || 0)).slice(0, 7).map((item) => ({ label: item.name, value: Number(item.stock || 0) / KG_PER_SACK, display: sackQuantity(item.stock) }))
   const supplierBars = [...supplierPerformance.values()].sort((a, b) => b.revenue - a.revenue).slice(0, 7).map((item) => ({ label: item.name, value: item.revenue, display: money(item.revenue) }))
   const chart = report === 'Sales overview'
     ? { title: 'Sales by period', subtitle: 'Recorded revenue for the selected date range', legend: 'Revenue', bars: salesBuckets.map((bucket) => ({ label: bucket.label, value: bucket.value, display: money(bucket.value) })), empty: 'No sales recorded in this date range.' }
     : report === 'Inventory report'
-      ? { title: 'Stock by product', subtitle: 'Current on-hand quantity', legend: 'Units', bars: inventoryBars, empty: 'No products are available to report.' }
+      ? { title: 'Stock by product', subtitle: 'Current on-hand quantity', legend: '50 kg sacks', bars: inventoryBars, empty: 'No products are available to report.' }
       : report === 'Top products'
-        ? { title: 'Top products', subtitle: 'Units sold in the selected date range', legend: 'Units sold', bars: productBars, empty: 'No product sales recorded in this date range.' }
+        ? { title: 'Top products', subtitle: 'Kg sold in the selected date range', legend: 'Kg sold', bars: productBars, empty: 'No product sales recorded in this date range.' }
         : { title: 'Supplier performance', subtitle: 'Revenue attributed to each product supplier', legend: 'Revenue', bars: supplierBars, empty: 'No supplier sales recorded in this date range.' }
   const maxBarValue = Math.max(1, ...chart.bars.map((bar) => Number(bar.value || 0)))
   const chartHasData = chart.bars.some((bar) => Number(bar.value || 0) > 0)
@@ -773,7 +843,7 @@ function ReportsPage({ data, onRefresh, refreshing = false }) {
     ['Products tracked', number(products.length)],
     ['Low stock products', number(products.filter((product) => Number(product.stock) <= Number(product.reorder_level)).length)],
     ['Out of stock products', number(products.filter((product) => Number(product.stock) <= 0).length)],
-    ['Units on hand', number(products.reduce((sum, product) => sum + Number(product.stock || 0), 0))],
+    ['50 kg sacks on hand', sackQuantity(products.reduce((sum, product) => sum + Number(product.stock || 0), 0))],
     ['Estimated inventory value', money(products.reduce((sum, product) => sum + Number(product.stock || 0) * Number(product.price || 0), 0))],
     ['Suppliers', number((data.suppliers || []).length)],
     ['Inventory movements', number((data.movements || []).length)],
@@ -806,7 +876,7 @@ function ReportsPage({ data, onRefresh, refreshing = false }) {
       {zeroValueSales.length > 0 && <p className="report-data-warning" role="status">{number(zeroValueSales.length)} {zeroValueSales.length === 1 ? 'sale has' : 'sales have'} a ₱0 total because the rice price was ₱0 when recorded. Set product prices before the next sale; past sale amounts cannot be inferred automatically.</p>}
       <div className="report-metrics"><div><span>Total sales · {period === 'All time' ? 'all time' : period.toLowerCase()}</span><strong>{money(salesTotal)}</strong></div><div><span>Transactions</span><strong>{number(sales.length)}</strong></div><div><span>Products tracked</span><strong>{number(products.length)}</strong></div><div><span>Low stock</span><strong className="report-low-value">{number(products.filter((product) => Number(product.stock) <= Number(product.reorder_level)).length)}</strong></div></div>
       <div className="report-content-grid"><section className="report-chart-card"><div className="panel-heading"><div><h2>{chart.title}</h2><p>{chart.subtitle}</p></div><span className="legend-dot">{chart.legend}</span></div>{chartHasData ? <div className="report-bars" role="img" aria-label={chart.title}>{chart.bars.map((bar, index) => <div className="report-bar-group" key={`${bar.label}-${index}`} title={`${bar.label}: ${bar.display}`}><span className="bar-value">{bar.display}</span><div className="report-bar-track"><i style={{ height: Math.max(12, Number(bar.value) / maxBarValue * 100) + '%' }} /></div><small>{bar.label}</small></div>)}</div> : <div className="report-empty-state" role="status">{chartEmptyMessage}</div>}</section>
-        <section className="report-chart-card category-report"><div className="panel-heading"><div><h2>Stock by category</h2><p>Units currently on hand</p></div></div><div className="category-chart-wrap"><div className="category-donut" style={{ background: categoryGradient }}><div><strong>{number(products.reduce((sum, product) => sum + Number(product.stock || 0), 0))}</strong><span>units</span></div></div><div className="category-legend">{categoryCounts.map(([name, amount], index) => <div key={name}><i className="legend-swatch" style={{ background: categoryColors[index % categoryColors.length] }} /><span>{name}</span><strong>{amount}</strong></div>)}</div></div></section></div>
+        <section className="report-chart-card category-report"><div className="panel-heading"><div><h2>Stock by category</h2><p>Current 50 kg sack equivalents</p></div></div><div className="category-chart-wrap"><div className="category-donut" style={{ background: categoryGradient }}><div><strong>{sackQuantity(products.reduce((sum, product) => sum + Number(product.stock || 0), 0))}</strong><span>sacks</span></div></div><div className="category-legend">{categoryCounts.map(([name, amount], index) => <div key={name}><i className="legend-swatch" style={{ background: categoryColors[index % categoryColors.length] }} /><span>{name}</span><strong>{number(amount)}</strong></div>)}</div></div></section></div>
     </div>
     {exportFormat && <Modal title={exportFormats[exportFormat].title} subtitle={exportFormats[exportFormat].subtitle} onClose={() => setExportFormat(null)}>
       <div className="report-export-preview">
@@ -954,12 +1024,12 @@ function zipFiles(files) {
 
 function exportReportsToExcel(data, summaryOnly = false) {
   const products = data.products || []
-  const sales = data.sales || []
+  const sales = (data.sales || []).filter((sale) => sale.status !== 'Voided' && !sale.voided_at)
   const suppliers = data.suppliers || []
   const movements = data.movements || []
   const lowStock = products.filter((product) => Number(product.stock) <= Number(product.reorder_level))
   const outOfStock = products.filter((product) => Number(product.stock) <= 0)
-  const totalUnits = products.reduce((sum, product) => sum + Number(product.stock || 0), 0)
+  const totalUnits = products.reduce((sum, product) => sum + Number(product.stock || 0), 0) / KG_PER_SACK
   const stockValue = products.reduce((sum, product) => sum + Number(product.stock || 0) * Number(product.price || 0), 0)
   const totalSales = sales.reduce((sum, sale) => sum + Number(sale.total || 0), 0)
   const salesItems = sales.flatMap((sale) => (sale.items || []).map((item) => ({
@@ -1001,7 +1071,7 @@ function exportReportsToExcel(data, summaryOnly = false) {
         ['Products tracked', products.length],
         ['Low stock products', lowStock.length],
         ['Out of stock products', outOfStock.length],
-        ['Units on hand', totalUnits],
+        ['50 kg sacks on hand', number(totalUnits)],
         ['Estimated inventory value', stockValue],
         ['Suppliers', suppliers.length],
         ['Inventory movements included', movements.length],
@@ -1026,12 +1096,12 @@ function exportReportsToExcel(data, summaryOnly = false) {
     {
       name: 'Top Products',
       currencyColumns: [3],
-      rows: [['Product ID', 'Product', 'Units sold', 'Sales revenue', 'Transactions'], ...[...productPerformance.values()].sort((a, b) => b.units - a.units).map((product) => [product.id, product.name, product.units, product.revenue, product.transactions.size])],
+      rows: [['Product ID', 'Product', 'Kg sold', 'Sales revenue', 'Transactions'], ...[...productPerformance.values()].sort((a, b) => b.units - a.units).map((product) => [product.id, product.name, product.units, product.revenue, product.transactions.size])],
     },
     {
       name: 'Stock by Category',
       currencyColumns: [3],
-      rows: [['Category', 'Products', 'Units on hand', 'Estimated value', 'Low stock products'], ...[...categoryStats.entries()].map(([category, stats]) => [category, stats.products, stats.units, stats.value, stats.lowStock])],
+      rows: [['Category', 'Products', 'Kg on hand', 'Estimated value', 'Low stock products'], ...[...categoryStats.entries()].map(([category, stats]) => [category, stats.products, stats.units, stats.value, stats.lowStock])],
     },
     {
       name: 'Suppliers',
@@ -1073,7 +1143,7 @@ function exportReportsToExcel(data, summaryOnly = false) {
 
 function exportReportSummaryCsv(data) {
   const products = data.products || []
-  const sales = data.sales || []
+  const sales = (data.sales || []).filter((sale) => sale.status !== 'Voided' && !sale.voided_at)
   const suppliers = data.suppliers || []
   const movements = data.movements || []
   const rows = [
@@ -1084,7 +1154,7 @@ function exportReportSummaryCsv(data) {
     ['Products tracked', products.length],
     ['Low stock products', products.filter((product) => Number(product.stock) <= Number(product.reorder_level)).length],
     ['Out of stock products', products.filter((product) => Number(product.stock) <= 0).length],
-    ['Units on hand', products.reduce((sum, product) => sum + Number(product.stock || 0), 0)],
+    ['50 kg sacks on hand', sackQuantity(products.reduce((sum, product) => sum + Number(product.stock || 0), 0))],
     ['Estimated inventory value', products.reduce((sum, product) => sum + Number(product.stock || 0) * Number(product.price || 0), 0)],
     ['Suppliers', suppliers.length],
     ['Inventory movements included', movements.length],
@@ -2218,8 +2288,8 @@ function EmptyState({ title, text }) { return <div className="empty-state"><div>
 
 function EntityModal({ type, item, suppliers, products = [], onClose, onNavigate, onSave }) {
   const [form, setForm] = useState(() => {
-    if (!item) return type === 'Products' ? { name: '', category: riceCatalog[0].category, price: '', stock: '0', reorder_level: '5', supplier_id: '' } : { name: '', contact: '', email: '', products: '' }
-    const current = { ...item }
+    if (!item) return type === 'Products' ? { name: '', category: riceCatalog[0].category, price: '', stock: '0', reorder_level: '5', is_best_seller: false, supplier_id: '' } : { name: '', contact: '', email: '', products: '' }
+    const current = type === 'Products' ? { ...item, stock: Number(item.stock || 0) / KG_PER_SACK, reorder_level: Number(item.reorder_level || 0) / KG_PER_SACK } : { ...item }
     delete current.sku
     return current
   })
@@ -2229,7 +2299,7 @@ function EntityModal({ type, item, suppliers, products = [], onClose, onNavigate
   return <Modal title={(item ? 'Edit ' : 'Add ') + type.slice(0, -1).toLowerCase()} onClose={onClose}><form className="modal-form" onSubmit={(event) => { event.preventDefault(); if (type === 'Products' && (!String(form.name || '').trim() || productNameTaken)) return; onSave(type === 'Products' ? { ...form, name: form.name.trim() } : form) }}>
     <label className="field-label">{supplier ? 'Supplier name' : 'Rice product'}<input className="text-input" value={form.name || ''} onChange={(event) => update('name', event.target.value)} required maxLength={160} placeholder={supplier ? 'Supplier name' : 'e.g. Organic Jasmine Rice'} /></label>
     {type === 'Products' && productNameTaken && <p className="form-error" role="alert">That product is already in your catalog. Open Inventory to add stock to it.</p>}
-    {supplier ? <><label className="field-label">Contact number<input className="text-input" value={form.contact || ''} onChange={(event) => update('contact', event.target.value)} /></label><label className="field-label">Email<input className="text-input" type="email" value={form.email || ''} onChange={(event) => update('email', event.target.value)} /></label><label className="field-label">Products supplied<input className="text-input" value={form.products || ''} onChange={(event) => update('products', event.target.value)} /></label></> : <><label className="field-label">Rice category<select className="text-input" value={form.category || riceCatalog[0].category} onChange={(event) => update('category', event.target.value)} required>{riceCatalog.map((value) => <option key={value.category} value={value.category}>{value.category}</option>)}</select></label><div className="form-two-col"><label className="field-label">Price (₱)<input type="number" min="0" step=".01" className="text-input" value={form.price || ''} onChange={(event) => update('price', event.target.value)} required /></label>{item && <label className="field-label">Current stock<input type="number" min="0" className="text-input" value={form.stock ?? ''} onChange={(event) => update('stock', event.target.value)} required /></label>}</div>{!item && <p className="sale-price-help">New rice varieties start at 0 stock. After saving, use Inventory → Add stock to record received units.</p>}<div className="form-two-col"><label className="field-label">Reorder level<input type="number" min="0" className="text-input" value={form.reorder_level ?? ''} onChange={(event) => update('reorder_level', event.target.value)} /></label><label className="field-label">Supplier<select className="text-input" value={form.supplier_id || ''} onChange={(event) => update('supplier_id', event.target.value)}><option value="">Select supplier</option>{suppliers.map((value) => <option key={value.id} value={value.id}>{value.name}</option>)}</select></label></div></>}
+    {supplier ? <><label className="field-label">Contact number<input className="text-input" value={form.contact || ''} onChange={(event) => update('contact', event.target.value)} /></label><label className="field-label">Email<input className="text-input" type="email" value={form.email || ''} onChange={(event) => update('email', event.target.value)} /></label><label className="field-label">Products supplied<input className="text-input" value={form.products || ''} onChange={(event) => update('products', event.target.value)} /></label></> : <><label className="field-label">Rice category<select className="text-input" value={form.category || riceCatalog[0].category} onChange={(event) => update('category', event.target.value)} required>{riceCatalog.map((value) => <option key={value.category} value={value.category}>{value.category}</option>)}</select></label><div className="form-two-col"><label className="field-label">Price per kg (₱)<input type="number" min="0" step=".01" className="text-input" value={form.price || ''} onChange={(event) => update('price', event.target.value)} required /></label>{item && <label className="field-label">Current stock (50 kg sacks)<input type="number" min="0" step=".02" className="text-input" value={form.stock ?? ''} onChange={(event) => update('stock', event.target.value)} required /></label>}</div>{!item && <p className="sale-price-help">New rice varieties start at 0 sacks. Use Inventory → Add stock to receive 50 kg sacks.</p>}<div className="form-two-col"><label className="field-label">Reorder level (50 kg sacks)<input type="number" min="0" step=".02" className="text-input" value={form.reorder_level ?? ''} onChange={(event) => update('reorder_level', event.target.value)} /></label><label className="field-label">Supplier<select className="text-input" value={form.supplier_id || ''} onChange={(event) => update('supplier_id', event.target.value)}><option value="">Select supplier</option>{suppliers.map((value) => <option key={value.id} value={value.id}>{value.name}</option>)}</select></label></div><label className="best-seller-toggle"><input type="checkbox" checked={Boolean(form.is_best_seller)} onChange={(event) => update('is_best_seller', event.target.checked)} /><span><strong>Best seller</strong><small>Show a rice icon for staff and cashiers</small></span><Wheat size={18} aria-hidden="true" /></label></>}
     <div className="modal-actions"><button type="button" className="button button-outline" onClick={onClose}>Cancel</button><button className="button button-primary">{item ? 'Save changes' : 'Add record'}</button></div>
   </form></Modal>
 }
@@ -2237,22 +2307,101 @@ function EntityModal({ type, item, suppliers, products = [], onClose, onNavigate
 function SaleModal({ products, onClose, onSave }) {
   const [productId, setProductId] = useState(products[0]?.id || '')
   const [quantity, setQuantity] = useState(1)
+  const [amountReceived, setAmountReceived] = useState('')
   const product = products.find((value) => String(value.id) === String(productId))
   const unavailable = !product || Number(product.stock) < Number(quantity) || Number(quantity) < 1
   const unitPrice = Number(product?.price || 0)
+  const total = Math.round(unitPrice * Number(quantity || 0) * 100) / 100
+  const received = Number(amountReceived)
+  const coversTotal = amountReceived !== '' && Number.isFinite(received) && received >= total
   const priceMissing = !Number.isFinite(unitPrice) || unitPrice <= 0
-  return <Modal title="Record a new sale" subtitle="Choose a product and quantity. The product price is applied automatically." onClose={onClose}><form className="modal-form" onSubmit={(event) => { event.preventDefault(); if (!unavailable && !priceMissing) onSave({ product, quantity: Number(quantity) }) }}><label className="field-label">Product<select className="text-input" value={productId} onChange={(event) => setProductId(event.target.value)}>{products.map((value) => <option key={value.id} value={value.id}>{value.name} — {Number(value.price) > 0 ? money(value.price) : 'Price needed'} ({value.stock} in stock)</option>)}</select></label><label className="field-label">Quantity<input className="text-input" type="number" min="1" max={product?.stock || 1} value={quantity} onChange={(event) => setQuantity(event.target.value)} /></label><p className="sale-price-help">Unit price is set by an administrator and cannot be changed while recording a sale.</p><div className="sale-total"><span>Unit price</span><strong>{money(unitPrice)}</strong></div><div className="sale-total"><span>Sale total</span><strong>{money(unitPrice * Number(quantity || 0))}</strong></div>{priceMissing && <p className="form-error" role="alert">This product has no price. Ask an administrator to set its price in Products before recording a sale.</p>}{unavailable && <p className="form-error" role="alert">Enter a quantity available in stock.</p>}<div className="modal-actions"><button type="button" className="button button-outline" onClick={onClose}>Cancel</button><button className="button button-primary" disabled={unavailable || priceMissing}>Complete sale</button></div></form></Modal>
+  return <Modal title="Record a new sale" subtitle="Choose a product and quantity, then enter the cash received." onClose={onClose}><form className="modal-form" onSubmit={(event) => { event.preventDefault(); if (!unavailable && !priceMissing && coversTotal) onSave({ product, quantity: Number(quantity), amountPaid: received }) }}><label className="field-label">Product<select className="text-input" value={productId} onChange={(event) => setProductId(event.target.value)}>{products.map((value) => <option key={value.id} value={value.id}>{value.name} — {Number(value.price) > 0 ? money(value.price) : 'Price needed'} ({value.stock} in stock)</option>)}</select></label><label className="field-label">Quantity<input className="text-input" type="number" min="1" max={product?.stock || 1} value={quantity} onChange={(event) => setQuantity(event.target.value)} /></label><p className="sale-price-help">Unit price is set by an administrator and cannot be changed while recording a sale.</p><div className="sale-total"><span>Unit price</span><strong>{money(unitPrice)}</strong></div><div className="sale-total"><span>Total due</span><strong>{money(total)}</strong></div><label className="field-label">Amount received<input className="text-input" type="number" min={total.toFixed(2)} step="0.01" inputMode="decimal" value={amountReceived} onChange={(event) => setAmountReceived(event.target.value)} placeholder="0.00" required /></label>{amountReceived !== '' && !coversTotal && <p className="form-error" role="alert">Amount is short by {money(total - Math.max(0, received))}.</p>}<div className="sale-total"><span>Change due</span><strong>{money(coversTotal ? received - total : 0)}</strong></div>{priceMissing && <p className="form-error" role="alert">This product has no price. Ask an administrator to set its price in Products before recording a sale.</p>}{unavailable && <p className="form-error" role="alert">Enter a quantity available in stock.</p>}<div className="modal-actions"><button type="button" className="button button-outline" onClick={onClose}>Cancel</button><button className="button button-primary" disabled={unavailable || priceMissing || !coversTotal}>Complete sale</button></div></form></Modal>
 }
 
 function RestockModal({ product, onClose, onSave }) {
-  const [quantity, setQuantity] = useState(10)
+  const [sacks, setSacks] = useState(1)
   const [note, setNote] = useState('Supplier restock')
-  return <Modal title="Restock rice" subtitle="Confirm which variety you received before saving the stock update." onClose={onClose}><form className="modal-form" onSubmit={(event) => { event.preventDefault(); onSave(Number(quantity), note) }}><div className="restock-product-card" aria-label={'Rice being restocked: ' + product.name}><span className="restock-product-icon"><Package size={19} /></span><div className="restock-product-copy"><span className="restock-product-label">RICE BEING RESTOCKED</span><strong>{product.name}</strong><small>{product.category || 'Rice'} <span aria-hidden="true">·</span> Product ID <span className="font-mono">#{product.id}</span></small></div></div><div className="restock-current"><span>Current stock</span><strong>{number(product.stock)} units</strong></div><label className="field-label">Quantity received<input className="text-input" type="number" min="1" value={quantity} onChange={(event) => setQuantity(event.target.value)} required /></label><label className="field-label">Reference or note<input className="text-input" value={note} onChange={(event) => setNote(event.target.value)} /></label><div className="modal-actions"><button type="button" className="button button-outline" onClick={onClose}>Cancel</button><button className="button button-primary" aria-label={'Save restock for ' + product.name}>Save restock</button></div></form></Modal>
+  const addedKg = Number(sacks) * KG_PER_SACK
+  return <Modal title="Restock rice" subtitle="Each sack contains 50 kg." onClose={onClose}><form className="modal-form" onSubmit={(event) => { event.preventDefault(); if (addedKg > 0) onSave(addedKg, `${sacks} sack${Number(sacks) === 1 ? '' : 's'} × 50 kg${note.trim() ? ` · ${note.trim()}` : ''}`) }}><div className="restock-product-card" aria-label={'Rice being restocked: ' + product.name}><span className="restock-product-icon"><Package size={19} /></span><div className="restock-product-copy"><span className="restock-product-label">RICE BEING RESTOCKED</span><strong>{product.name}</strong><small>{product.category || 'Rice'} <span aria-hidden="true">·</span> Product ID <span className="font-mono">#{product.id}</span></small></div></div><div className="restock-current"><span>Current stock</span><div className="restock-current-copy"><strong>{sackQuantity(product.stock)} sacks</strong><small>{number(product.stock)} kg total</small></div></div><div className="restock-current"><span>Reorder level</span><div className="restock-current-copy"><strong>{sackQuantity(product.reorder_level)} sacks</strong><small>Low stock threshold</small></div></div><label className="field-label">Sacks received<input className="text-input" type="number" min="1" step="1" value={sacks} onChange={(event) => setSacks(event.target.value)} required /></label><div className="restock-current"><span>Stock to add</span><div className="restock-current-copy"><strong>{number(sacks)} sack{Number(sacks) === 1 ? '' : 's'}</strong><small>Adds {number(Number.isFinite(addedKg) ? addedKg : 0)} kg</small></div></div><label className="field-label">Reference or note<input className="text-input" value={note} onChange={(event) => setNote(event.target.value)} /></label><div className="modal-actions"><button type="button" className="button button-outline" onClick={onClose}>Cancel</button><button className="button button-primary" disabled={!Number.isInteger(Number(sacks)) || addedKg < 1} aria-label={'Save restock for ' + product.name}>Save restock</button></div></form></Modal>
 }
 
 function Modal({ title, subtitle, onClose, children }) {
   useEffect(() => { const handler = (event) => event.key === 'Escape' && onClose(); window.addEventListener('keydown', handler); return () => window.removeEventListener('keydown', handler) }, [onClose])
   return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section className="modal-card"><div className="modal-header"><div><h2>{title}</h2>{subtitle && <p>{subtitle}</p>}</div><button className="icon-button" aria-label="Close dialog" onClick={onClose}><X size={18} /></button></div>{children}</section></div>
+}
+
+function SaleDetailModal({ sale, canVoid, requiresAdminApproval = false, onClose, onVoid }) {
+  const [reason, setReason] = useState('')
+  const [reasonDetails, setReasonDetails] = useState('')
+  const [approvers, setApprovers] = useState([])
+  const [approverId, setApproverId] = useState('')
+  const [approvalCode, setApprovalCode] = useState('')
+  const [codeSent, setCodeSent] = useState(false)
+  const [codeMessage, setCodeMessage] = useState('')
+  const [codeError, setCodeError] = useState('')
+  const [requestBusy, setRequestBusy] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const isVoided = sale.status === 'Voided' || Boolean(sale.voided_at)
+  const canSubmitVoid = canVoid || requiresAdminApproval
+  const reasonText = reason === 'Other' ? `Other: ${reasonDetails.trim()}` : reason
+  const reasonReady = Boolean(reason) && (reason !== 'Other' || reasonDetails.trim().length >= 3)
+  useEffect(() => {
+    if (!requiresAdminApproval) return
+    api.voidApprovers(sale.id)
+      .then((items) => setApprovers(items))
+      .catch((error) => setCodeError(error.message || 'Could not load administrators.'))
+  }, [sale.id, requiresAdminApproval])
+  const sendCode = async () => {
+    if (!approverId || !reasonReady || requestBusy) return
+    setRequestBusy(true)
+    setCodeError('')
+    try {
+      const result = await api.requestVoidCode(sale.id, { admin_id: Number(approverId), reason: reasonText })
+      setCodeSent(true)
+      setApprovalCode('')
+      setCodeMessage(result.message)
+    } catch (error) {
+      setCodeError(error.message || 'Could not send the one-time code.')
+    } finally {
+      setRequestBusy(false)
+    }
+  }
+  const submit = async (event) => {
+    event.preventDefault()
+    if (!reasonReady || (requiresAdminApproval && (!codeSent || approvalCode.length !== 6)) || busy) return
+    setBusy(true)
+    try { await onVoid(sale, reasonText, requiresAdminApproval ? approvalCode : null) } finally { setBusy(false) }
+  }
+  return <Modal title={'Sale #' + (sale.number || sale.id)} subtitle={dateTime(sale.date)} onClose={onClose}>
+    <div className="sale-detail">
+      {(sale.items || []).map((item, index) => { const bagKg = { bag_10kg: 10, bag_15kg: 15, bag_20kg: 20 }[item.sale_unit]; const description = bagKg ? `${item.quantity / bagKg} × ${bagKg} kg bags (${item.quantity} kg)` : `${item.quantity} kg`; return <div className="sale-detail-item" key={index}><span>{item.product_name} × {description}</span><strong>{money(item.price * item.quantity)}</strong></div> })}
+      <div className="sale-detail-total"><span>Total</span><strong>{money(sale.total)}</strong></div>
+      {sale.amount_paid !== null && sale.amount_paid !== undefined && <div><span>Cash received</span><strong>{money(sale.amount_paid)}</strong></div>}
+      {sale.change_given !== null && sale.change_given !== undefined && <div><span>Change given</span><strong>{money(sale.change_given)}</strong></div>}
+      <div><span>Status</span><strong>{isVoided ? 'Voided' : 'Completed'}</strong></div>
+      {isVoided && <>
+        <div><span>Voided at</span><strong>{sale.voided_at ? dateTime(sale.voided_at) : 'Recorded'}</strong></div>
+        {sale.voided_by_name && <div><span>Voided by</span><strong>{sale.voided_by_name}</strong></div>}
+        {sale.approved_by_name && <div><span>Approved by</span><strong>{sale.approved_by_name}</strong></div>}
+        {sale.void_reason && <div><span>Reason</span><strong>{sale.void_reason}</strong></div>}
+      </>}
+    </div>
+    {canSubmitVoid && !isVoided && <form className="modal-form" onSubmit={submit}>
+      <label className="field-label">Reason for voiding<select className="text-input" value={reason} onChange={(event) => { setReason(event.target.value); setReasonDetails(''); if (requiresAdminApproval) { setCodeSent(false); setApprovalCode(''); setCodeMessage('') } }} required><option value="">Select a reason</option><option>Customer unable to pay</option><option>Customer changed their mind</option><option>Wrong rice variety</option><option>Wrong quantity</option><option>Duplicate sale</option><option>Payment issue</option><option>Other</option></select></label>
+      {reason === 'Other' && <label className="field-label">Please explain<input className="text-input" value={reasonDetails} onChange={(event) => { setReasonDetails(event.target.value); if (requiresAdminApproval) { setCodeSent(false); setApprovalCode(''); setCodeMessage('') } }} minLength={3} maxLength={450} required placeholder="Enter the reason" /></label>}
+      {requiresAdminApproval && <>
+        <p className="form-hint">This sale is over 10 minutes old. Select an administrator who can open Settings and share a one-time code for this sale.</p>
+        <label className="field-label">Administrator<select className="text-input" value={approverId} onChange={(event) => { setApproverId(event.target.value); setCodeSent(false); setApprovalCode(''); setCodeMessage('') }} required><option value="">Select administrator</option>{approvers.map((admin) => <option key={admin.id} value={admin.id}>{admin.name}</option>)}</select></label>
+        <div className="void-code-request-row"><button type="button" className="button button-outline" onClick={sendCode} disabled={!approverId || !reasonReady || requestBusy}>{requestBusy ? 'Requesting code…' : codeSent ? 'Request a new code' : 'Request one-time code'}</button><span>Code expires in 5 minutes and works once.</span></div>
+        {codeMessage && <p className="form-hint">{codeMessage}</p>}{codeError && <p className="form-error" role="alert">{codeError}</p>}
+        {codeSent && <label className="field-label">One-time code<input className="text-input" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={approvalCode} onChange={(event) => setApprovalCode(event.target.value.replace(/\D/g, '').slice(0, 6))} required /></label>}
+      </>}
+      <p className="form-hint">Voiding restores the items to stock and removes this sale from revenue totals. This action is recorded in the audit history.</p>
+      <div className="modal-actions"><button type="button" className="button button-outline" onClick={onClose}>Keep sale</button><button className="button button-danger" disabled={busy || !reasonReady || (requiresAdminApproval && (!codeSent || approvalCode.length !== 6))}>{busy ? 'Voiding…' : requiresAdminApproval ? 'Use code and void sale' : 'Void sale'}</button></div>
+    </form>}
+    {!isVoided && !canSubmitVoid && <p className="form-hint">This sale is outside the 10-minute staff void window. Only the sale’s cashier can request an administrator code.</p>}
+    {(!canSubmitVoid || isVoided) && <div className="modal-actions"><button className="button button-outline" onClick={onClose}>Close</button></div>}
+  </Modal>
 }
 
 function App() {
@@ -2298,6 +2447,10 @@ function App() {
   const navigate = (destination) => {
     if (session?.user?.role?.toLowerCase() === 'staff' && !['Products', 'Sales', 'Settings'].includes(destination)) return
     setActive(destination); setSearch(''); setMobileOpen(false)
+  }
+  const openLowStockProduct = (product) => {
+    navigate(isStaff ? 'Products' : 'Inventory')
+    setSearch(product.name)
   }
   const requestSignOut = () => setModal({ kind: 'logout' })
 
@@ -2426,7 +2579,7 @@ function App() {
   const saveEntity = async (type, item, values) => {
     const path = pagePaths[type]
     const listKey = type.toLowerCase()
-    const normalized = type === 'Products' ? { ...values, price: Number(values.price), stock: Number(values.stock), reorder_level: Number(values.reorder_level), supplier_id: values.supplier_id ? Number(values.supplier_id) : null, supplier_name: data.suppliers.find((supplier) => String(supplier.id) === String(values.supplier_id))?.name || values.supplier_name || '' } : values
+    const normalized = type === 'Products' ? { ...values, price: Number(values.price), stock: Math.round(Number(values.stock) * KG_PER_SACK), reorder_level: Math.round(Number(values.reorder_level) * KG_PER_SACK), supplier_id: values.supplier_id ? Number(values.supplier_id) : null, supplier_name: data.suppliers.find((supplier) => String(supplier.id) === String(values.supplier_id))?.name || values.supplier_name || '' } : values
     if (item) {
       const response = await callApi(api.update(path, item.id, normalized))
       if (session?.token && !response) return
@@ -2439,6 +2592,13 @@ function App() {
       notify(type.slice(0, -1) + ' added.')
     }
     setModal(null)
+  }
+  const toggleBestSeller = async (product) => {
+    const isBestSeller = !Boolean(product.is_best_seller)
+    const response = await callApi(api.update('/products', product.id, { is_best_seller: isBestSeller }))
+    if (session?.token && !response) return
+    persist({ ...data, products: data.products.map((value) => value.id === product.id ? { ...value, is_best_seller: response?.is_best_seller ?? isBestSeller } : value) })
+    notify(isBestSeller ? 'Marked as a best seller.' : 'Removed from best sellers.')
   }
   const deleteEntity = async (type, item) => {
   if (!window.confirm('Delete ' + item.name + '? This action cannot be undone.')) return
@@ -2457,15 +2617,18 @@ function App() {
     setModal(null)
     notify('Inventory updated.')
   }
-  const saveSale = async ({ items, product, quantity }) => {
+  const saveSale = async ({ items, product, quantity, amountPaid }) => {
     const lines = items || [{ product, quantity }]
     if (!lines.length) return false
-    const normalized = lines.map((line) => ({ product: line.product, quantity: Number(line.quantity) }))
+    const normalized = lines.map((line) => ({ product: line.product, quantity: Number(line.quantity), sale_unit: line.saleUnit || line.sale_unit || 'kg' }))
     const timestamp = new Date().toISOString()
     const numberText = 'S-' + String(getId(data.sales) + 1038)
-    const total = normalized.reduce((sum, line) => sum + Number(line.product.price) * line.quantity, 0)
-    const sale = { id: getId(data.sales), number: numberText, date: timestamp, total, status: 'Completed', items: normalized.map(({ product: itemProduct, quantity: itemQuantity }) => ({ product_id: itemProduct.id, product_name: itemProduct.name, quantity: itemQuantity, price: Number(itemProduct.price) })) }
-    const savedSale = await callApi(api.createSale({ items: normalized.map(({ product: itemProduct, quantity: itemQuantity }) => ({ product_id: Number(itemProduct.id), quantity: itemQuantity })) }))
+    const total = Math.round(normalized.reduce((sum, line) => sum + Number(line.product.price) * line.quantity, 0) * 100) / 100
+    const amountPaidValue = Math.round(Number(amountPaid) * 100) / 100
+    if (!Number.isFinite(amountPaidValue) || amountPaidValue < total) return false
+    const changeGiven = Math.round((amountPaidValue - total) * 100) / 100
+    const sale = { id: getId(data.sales), number: numberText, date: timestamp, total, amount_paid: amountPaidValue, change_given: changeGiven, status: 'Completed', sold_by: session?.user?.id, items: normalized.map(({ product: itemProduct, quantity: itemQuantity, sale_unit }) => ({ product_id: itemProduct.id, product_name: itemProduct.name, quantity: itemQuantity, sale_unit, price: Number(itemProduct.price) })) }
+    const savedSale = await callApi(api.createSale({ amount_paid: amountPaidValue, items: normalized.map(({ product: itemProduct, quantity: itemQuantity, sale_unit }) => ({ product_id: Number(itemProduct.id), quantity: itemQuantity, sale_unit })) }))
     if (session?.token && !savedSale) return false
     const completedSale = savedSale || sale
     const movements = normalized.map(({ product: itemProduct, quantity: itemQuantity }, index) => ({ id: getId(data.movements) + index, date: completedSale.date || timestamp, product_id: itemProduct.id, product_name: itemProduct.name, type: 'Sale', quantity: -itemQuantity, reference: 'Sale #' + (completedSale.number || numberText) }))
@@ -2477,6 +2640,40 @@ function App() {
     notify('Sale completed and inventory updated.')
     return true
   }
+
+  const voidSale = async (sale, reason, approvalCode = null) => {
+    if (session?.demo || !session?.token) {
+      if (sale.status === 'Voided' || sale.voided_at) return
+      const voidedAt = new Date().toISOString()
+      const updated = { ...sale, status: 'Voided', voided_at: voidedAt, voided_by: session?.user?.id, voided_by_name: session?.user?.name, void_reason: reason }
+      const movements = (sale.items || []).map((item, index) => ({ id: getId(data.movements) + index, date: voidedAt, product_id: item.product_id, product_name: item.product_name, type: 'Sale Void', quantity: Number(item.quantity), reference: 'Void sale #' + (sale.number || sale.id), note: reason }))
+      persist({ ...data, sales: data.sales.map((item) => item.id === sale.id ? updated : item), products: data.products.map((product) => { const line = (sale.items || []).find((item) => String(item.product_id) === String(product.id)); return line ? { ...product, stock: Number(product.stock) + Number(line.quantity) } : product }), movements: [...movements, ...data.movements] })
+      setSaleToView(null)
+      notify('Sale voided and inventory restored.')
+      return
+    }
+    try {
+      await api.voidSale(sale.id, reason, approvalCode)
+      const loaded = await loadWorkspace()
+      const refreshed = { ...readStoredData(), ...loaded }
+      setData(refreshed)
+      localStorage.setItem('fullstock_data', JSON.stringify(refreshed))
+      setSaleToView(null)
+      notify('Sale voided and inventory restored.')
+    } catch (error) {
+      notify(error.message || 'Could not void this sale.')
+    }
+  }
+  const canVoidSale = (sale) => {
+    const admin = ['admin', 'administrator'].includes(session?.user?.role?.toLowerCase())
+    if (admin) return true
+    if (sale.can_void !== undefined) return Boolean(sale.can_void)
+    const soldAt = new Date(sale.date).getTime()
+    return String(sale.sold_by) === String(session?.user?.id) && Number.isFinite(soldAt) && Date.now() - soldAt <= 10 * 60 * 1000
+  }
+  const needsAdminVoidApproval = (sale) => !['admin', 'administrator'].includes(session?.user?.role?.toLowerCase())
+    && Boolean(sale.can_request_admin_void)
+    && !canVoidSale(sale)
 
   if (!session) return <LoginScreen onLogin={login} onSetupAdministrator={api.setupAdministrator} onForgotPassword={api.forgotPassword} onResetPassword={api.resetPassword} onSubmitPasswordResetRequest={api.submitPasswordResetRequest} />
 
@@ -2499,7 +2696,7 @@ function App() {
   if (title === 'Dashboard') page = <Dashboard data={workspaceData} user={session.user} onNavigate={navigate} />
   else if (title === 'Products') page = isStaff
     ? <StaffPosPage products={data.products} search={search} setSearch={setSearch} onCheckout={saveSale} />
-    : <ProductPage products={data.products} search={search} setSearch={setSearch} canManage={canManageWorkspace} onAdd={() => setModal({ kind: 'entity', type: 'Products' })} onManageStock={() => navigate('Inventory')} onEdit={(item) => setModal({ kind: 'entity', type: 'Products', item })} onDelete={(item) => deleteEntity('Products', item)} />
+    : <ProductPage products={data.products} search={search} setSearch={setSearch} canManage={canManageWorkspace} onToggleBestSeller={toggleBestSeller} onAdd={() => setModal({ kind: 'entity', type: 'Products' })} onManageStock={() => navigate('Inventory')} onEdit={(item) => setModal({ kind: 'entity', type: 'Products', item })} onDelete={(item) => deleteEntity('Products', item)} />
   else if (title === 'Sales') page = <SalesPage sales={workspaceData.sales} search={search} setSearch={setSearch} onNewSale={() => isStaff ? navigate('Products') : setModal({ kind: 'sale' })} onView={setSaleToView} isStaff={isStaff} />
   else if (title === 'Inventory') page = <InventoryPage products={data.products} movements={data.movements} search={search} setSearch={setSearch} onRestock={(item) => setModal({ kind: 'restock', item })} />
   else if (title === 'Suppliers') page = <EntityPage items={data.suppliers} search={search} setSearch={setSearch} onAdd={() => setModal({ kind: 'entity', type: title })} onEdit={(item) => setModal({ kind: 'entity', type: title, item })} onDelete={(item) => deleteEntity(title, item)} />
@@ -2512,12 +2709,12 @@ function App() {
   }
   else page = <SettingsPage user={session.user} onToast={notify} onCreateStaffAccount={createStaffAccount} demoSession={session.demo} onChangePassword={changeTemporaryPassword} />
 
-  return <div className="app-shell"><Sidebar active={title} onNavigate={navigate} onSignOut={requestSignOut} mobileOpen={mobileOpen} closeMobile={() => setMobileOpen(false)} user={session.user} visibleNav={visibleNav} lowStockCount={data.products.filter((product) => Number(product.stock) <= Number(product.reorder_level)).length} /><div className="app-main"><Topbar search={search} setSearch={setSearch} openMenu={() => setMobileOpen(true)} user={session.user} onNavigate={navigate} onSignOut={requestSignOut} data={workspaceData} /><main className="page-content" key={title}>{page}</main><footer className="app-footer"><span>© 2026 FullStock</span><span>Inventory made clearer.</span></footer></div>
+  return <div className="app-shell"><Sidebar active={title} onNavigate={navigate} onSignOut={requestSignOut} mobileOpen={mobileOpen} closeMobile={() => setMobileOpen(false)} user={session.user} visibleNav={visibleNav} lowStockCount={data.products.filter((product) => Number(product.stock) <= Number(product.reorder_level)).length} /><div className="app-main"><Topbar search={search} setSearch={setSearch} openMenu={() => setMobileOpen(true)} user={session.user} onNavigate={navigate} onLowStockProduct={openLowStockProduct} onSignOut={requestSignOut} data={workspaceData} /><main className="page-content" key={title}>{page}</main><footer className="app-footer"><span>© 2026 FullStock</span><span>Inventory made clearer.</span></footer></div>
     {modal?.kind === 'entity' && <EntityModal type={modal.type} item={modal.item} suppliers={data.suppliers} products={data.products} onClose={() => setModal(null)} onNavigate={navigate} onSave={(values) => saveEntity(modal.type, modal.item, values)} />}
     {modal?.kind === 'sale' && <SaleModal products={data.products} onClose={() => setModal(null)} onSave={saveSale} />}
     {modal?.kind === 'restock' && <RestockModal product={modal.item} onClose={() => setModal(null)} onSave={(quantity, note) => saveRestock(modal.item, quantity, note)} />}
     {modal?.kind === 'logout' && <Modal title="Log out of FullStock?" subtitle={'You are signed in as ' + (session.user?.name || 'Admin') + '.'} onClose={() => setModal(null)}><p className="logout-confirm-copy">You can sign back in any time with your account.</p><div className="modal-actions"><button className="button button-outline" onClick={() => setModal(null)}>Stay signed in</button><button className="button button-primary logout-confirm-button" onClick={signOut}><LogOut size={15} /> Log out</button></div></Modal>}
-    {saleToView && <Modal title={'Sale #' + (saleToView.number || saleToView.id)} subtitle={shortDate(saleToView.date)} onClose={() => setSaleToView(null)}><div className="sale-detail">{(saleToView.items || []).map((item, index) => <div className="sale-detail-item" key={index}><span>{item.product_name} × {item.quantity}</span><strong>{money(item.price * item.quantity)}</strong></div>)}<div className="sale-detail-total"><span>Total</span><strong>{money(saleToView.total)}</strong></div></div></Modal>}
+    {saleToView && <SaleDetailModal sale={saleToView} canVoid={canVoidSale(saleToView)} requiresAdminApproval={needsAdminVoidApproval(saleToView)} onClose={() => setSaleToView(null)} onVoid={voidSale} />}
     {toast && <div className="toast-message"><span><Check size={15} /></span>{toast}<button aria-label="Dismiss" onClick={() => setToast('')}><X size={15} /></button></div>}
   </div>
 }

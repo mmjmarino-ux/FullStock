@@ -25,6 +25,9 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/products/{product}', [ProductController::class, 'show']);
             Route::get('/sales', [SalesController::class, 'index']);
             Route::post('/sales', [SalesController::class, 'store']);
+            Route::get('/sales/{sale}/void-approvers', [SalesController::class, 'voidApprovers']);
+            Route::post('/sales/{sale}/void-code', [SalesController::class, 'requestVoidCode'])->middleware('throttle:3,1');
+            Route::post('/sales/{sale}/void', [SalesController::class, 'void'])->middleware('throttle:6,1');
             Route::get('/suppliers', [SupplierController::class, 'index']);
             Route::get('/suppliers/{supplier}', [SupplierController::class, 'show']);
             Route::get('/inventory/movements', [InventoryController::class, 'movements']);
@@ -32,6 +35,7 @@ Route::middleware('auth:sanctum')->group(function () {
         });
 
         Route::middleware('can:manage-workspace')->group(function () {
+            Route::get('/void-approvals', [SalesController::class, 'voidApprovals']);
             Route::post('/staff-accounts', [AuthController::class, 'createStaffAccount'])->middleware('throttle:6,1');
             Route::get('/password-reset-requests', [AuthController::class, 'pendingPasswordResetRequests']);
             Route::post('/password-reset-requests/{passwordResetRequest}/reset', [AuthController::class, 'resetStaffPassword'])->middleware('throttle:6,1');

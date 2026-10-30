@@ -168,6 +168,7 @@ class FullStockAssistantContext
             }
             if (preg_match('/\b(recent|latest|last sale|transaction|receipt|yesterday|kahapon|ngayon|what did we sell|what was sold)\b/u', $question)) {
                 $sales['recent_transactions'] = Sale::with('items')
+                    ->whereNull('voided_at')
                     ->when($since, fn ($query) => $query->where('sold_at', '>=', $since))
                     ->when($until, fn ($query) => $query->where('sold_at', '<=', $until))
                     ->latest('sold_at')
@@ -279,7 +280,7 @@ class FullStockAssistantContext
                 'low_stock_items' => $lowStock,
             ],
             'sales' => [
-                'total_transactions' => Sale::count(),
+                'total_transactions' => Sale::whereNull('voided_at')->count(),
                 'period_summaries' => [
                     'today' => $this->salesSummary($now->copy()->startOfDay()),
                     'this_week' => $this->salesSummary($now->copy()->startOfWeek()),
@@ -326,7 +327,7 @@ class FullStockAssistantContext
                 'products_supplied_count' => $supplier->products_count,
             ])->values();
 
-        $salesCount = Sale::count();
+        $salesCount = Sale::whereNull('voided_at')->count();
         $now = now();
 
         return [
@@ -354,6 +355,7 @@ class FullStockAssistantContext
                 'top_products_all_time' => $this->topProducts(),
                 'top_products_last_30_days' => $this->topProducts($now->copy()->subDays(30)),
                 'recent_transactions' => Sale::with('items')
+                    ->whereNull('voided_at')
                     ->latest('sold_at')
                     ->limit(40)
                     ->get()
@@ -397,6 +399,7 @@ class FullStockAssistantContext
     private function salesSummary(?Carbon $since = null, ?Carbon $until = null): array
     {
         $summary = Sale::query()
+            ->whereNull('voided_at')
             ->when($since, fn ($query) => $query->where('sold_at', '>=', $since))
             ->when($until, fn ($query) => $query->where('sold_at', '<=', $until))
             ->selectRaw('COUNT(*) as transactions, COALESCE(SUM(total), 0) as revenue_php')
@@ -417,6 +420,7 @@ class FullStockAssistantContext
     {
         return SaleItem::query()
             ->join('sales', 'sales.id', '=', 'sale_items.sale_id')
+            ->whereNull('sales.voided_at')
             ->when($since, fn ($query) => $query->where('sales.sold_at', '>=', $since))
             ->when($until, fn ($query) => $query->where('sales.sold_at', '<=', $until))
             ->select('sale_items.product_name')
